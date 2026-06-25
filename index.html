@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="theme-color" content="#12b886">
+  <title>AutoZap — Motor de automação</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="styles.css?v=20260625iptv3">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#dashboard" aria-label="AutoZap"><span class="brand-mark">A</span><span>Auto<span>Zap</span></span></a>
+    <div class="workspace"><span class="avatar">OP</span><div><strong>Minha operação</strong><small>Administrador</small></div></div>
+    <nav id="nav">
+      <p>AUTOMAÇÃO</p>
+      <a href="#dashboard" data-route="dashboard" class="active"><i>⌂</i> Dashboard</a><a href="#dispositivos" data-route="dispositivos"><i>▣</i> Dispositivos</a><a href="#paineliptv" data-route="paineliptv"><i>TV</i> Painel IPTV</a><a href="#chatbot" data-route="chatbot"><i>♟</i> Chatbot</a><a href="#testes" data-route="testes"><i>⚡</i> Teste automático</a><a href="#testar" data-route="testar"><i>☁</i> Testar chatbot</a><a href="#templates" data-route="templates"><i>✦</i> Templates</a>
+      <p>PÚBLICO</p>
+      <a href="#contatos" data-route="contatos"><i>♙</i> Contatos</a><a href="#grupos" data-route="grupos"><i>♧</i> Grupos de contatos</a>
+      <p>CAMPANHAS E MENSAGENS</p>
+      <a href="#agendamentos" data-route="agendamentos"><i>◷</i> Agendamentos</a><a href="#enviar" data-route="enviar"><i>➤</i> Enviar mensagem</a><a href="#logs" data-route="logs"><i>☷</i> Mensagens enviadas</a><a href="#integracoes" data-route="integracoes"><i>⌁</i> Apps e API</a><a href="#diagnosticos" data-route="diagnosticos"><i>ⓘ</i> Diagnósticos</a>
+    </nav>
+    <div class="sidebar-foot"><span class="status-dot"></span><div><strong>Motor online</strong><small>Modo demonstração local</small></div></div>
+  </aside>
+  <main><header class="topbar"><button class="mobile-menu" id="mobile-menu">☰</button><div><span class="eyebrow">MOTOR DE AUTOMAÇÃO</span><h1 id="page-title">Dashboard</h1></div><div class="header-actions"><button class="icon-btn" title="Notificações">♢<b>2</b></button><button class="btn primary" data-action="new-rule">+ Criar resposta</button></div></header><section id="app" class="content"></section></main>
+  <div id="modal" class="modal" hidden><div class="modal-backdrop" data-action="close-modal"></div><section class="modal-card" role="dialog" aria-modal="true"><button class="modal-close" data-action="close-modal">×</button><div id="modal-content"></div></section></div><div id="toast" class="toast" hidden></div>
+  <script src="config.js"></script><script src="auth.js"></script><script type="module" src="app.js?v=20260625iptv3"></script>
+</body></html>
+
