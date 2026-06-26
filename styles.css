@@ -17,3 +17,6 @@ body{background:#edf8fc}.sidebar{background:#fff;color:#1b2736;border-right:1px 
 .logout-btn{margin-left:auto;border:1px solid rgba(239,91,91,.25);background:#fff0f0;color:#d94646;border-radius:8px;padding:7px 9px;font-size:10px;font-weight:800;cursor:pointer}.logout-btn:hover{background:#ffe3e3}.sidebar-foot{align-items:center}.sidebar-foot>div{min-width:0}.sidebar-foot strong,.sidebar-foot small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
 
 nav a i{width:28px;font-size:9px;font-weight:800;letter-spacing:.2px}
+
+.input.compact,.select.compact{width:110px;min-width:90px;padding:7px 8px;font-size:11px}.table td small{display:block;color:var(--muted);margin-top:4px}.table td .btn{padding:8px 11px}
+

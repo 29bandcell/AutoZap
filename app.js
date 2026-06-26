@@ -84,7 +84,9 @@ function loadState() {
 
 let state = loadState();
 const save = () => localStorage.setItem('autozap-state', JSON.stringify(state));
+const defaultNavHtml = document.querySelector('#nav')?.innerHTML || '';
 const route = () => location.hash.slice(1) || 'dashboard';
+const effectiveRoute = () => state.account?.platformAdmin && ['dashboard', 'admin'].includes(route()) ? 'admin' : route();
 const statusText = s => s === true ? 'Ativa' : s === false ? 'Pendente' : s === 'connected' ? 'Conectado' : s === 'open' ? 'Conectado' : s;
 const badge = s => `<span class="badge ${s === 'Enviado' || s === 'connected' || s === 'open' || s === true || s === 'Ativo' ? 'active' : 'pending'}">${statusText(s)}</span>`;
 const stat = (label, value, meta, icon, kind = '') => `<article class="stat ${kind}"><small>${label}</small><strong>${value}</strong><span>${meta}</span><div class="stat-icon">${icon}</div></article>`;
@@ -98,6 +100,7 @@ const providerFromApi = item => item ? ({ id: item.id, mode: item.mode || 'links
 const formatDateTime = value => value ? new Date(value).toLocaleString('pt-BR') : '-';
 const messageEventToLog = event => ({ id: event.id, at: formatDateTime(event.created_at || event.sent_at), from: event.phone || '-', keyword: event.direction === 'inbound' ? event.message : 'resposta enviada', rule: event.direction === 'inbound' ? 'Mensagem recebida' : 'Resposta do AutoZap', result: event.status === 'sent' ? 'Enviado' : event.status === 'failed' ? 'Falhou' : 'Processando', direction: event.direction || 'outbound', error: event.error_message || '', message: event.message || '' });
 const usageText = (used, limit) => limit ? String(used || 0) + ' / ' + String(limit) : String(used || 0);
+const adminStatusLabel = status => ({ trial: 'Teste', active: 'Ativo', past_due: 'Vencido', suspended: 'Suspenso', cancelled: 'Cancelado' }[String(status || '').toLowerCase()] || status || 'trial');
 function applyIptvRemote(payload) {
   if (!payload) return;
   state.iptvProvider = providerFromApi(payload.integration);
@@ -189,8 +192,12 @@ function adminView() {
   const payload = state.adminDashboard || {};
   const rows = payload.data || [];
   const active = payload.summary?.active ?? rows.filter(row => ['active','trial'].includes(String(row.subscription?.status || row.status))).length;
-  const body = rows.length ? rows.map(row => '<tr><td><strong>' + safe(row.name) + '</strong><br><small>' + safe(row.slug || row.id) + '</small></td><td>' + safe(row.subscription?.plan_code || row.plan_code || 'starter') + '</td><td>' + badge(row.subscription?.status || row.status || 'trial') + '</td><td>' + safe(row.connectedDevices || 0) + ' / ' + safe(row.max_devices || 0) + '</td><td>' + safe(row.messagesThisMonth || 0) + ' / ' + safe(row.monthly_message_limit || 0) + '</td><td>' + safe(row.failuresThisMonth || 0) + '</td></tr>').join('') : '<tr><td colspan="6">Nenhum cliente encontrado.</td></tr>';
-  return '<div class="section-head"><div><h2>Admin AutoZap</h2><p>Visão do vendedor do sistema: clientes, planos, limites e consumo.</p></div><button class="btn ghost" data-action="refresh-remote">Atualizar</button></div><div class="stats">' + stat('Clientes', String(rows.length), 'Empresas cadastradas', 'OP') + stat('Ativos/teste', String(active), 'Com acesso liberado', 'OK', 'blue') + stat('Dispositivos', String(rows.reduce((sum,row)=>sum+(row.devices||0),0)), 'WhatsApps criados', 'WA') + stat('Mensagens mês', String(rows.reduce((sum,row)=>sum+(row.messagesThisMonth||0),0)), 'Saídas enviadas', 'EN', 'warn') + '</div><article class="card table-wrap"><table class="table"><thead><tr><th>Cliente</th><th>Plano</th><th>Status</th><th>Dispositivos</th><th>Mensagens mês</th><th>Falhas</th></tr></thead><tbody>' + body + '</tbody></table></article>';
+  const body = rows.length ? rows.map(row => {
+    const plan = row.subscription?.plan_code || row.plan_code || 'starter';
+    const status = row.subscription?.status || row.status || 'trial';
+    return '<tr data-tenant="' + safe(row.id) + '"><td><strong>' + safe(row.name) + '</strong><br><small>' + safe(row.slug || row.id) + '</small><br><small>' + safe(row.users || 0) + ' usuário(s)</small></td><td><select class="select compact" data-admin-field="planCode"><option value="starter" ' + (plan === 'starter' ? 'selected' : '') + '>Starter</option><option value="pro" ' + (plan === 'pro' ? 'selected' : '') + '>Pro</option><option value="agency" ' + (plan === 'agency' ? 'selected' : '') + '>Agência</option></select></td><td><select class="select compact" data-admin-field="status"><option value="trial" ' + (status === 'trial' ? 'selected' : '') + '>Teste</option><option value="active" ' + (status === 'active' ? 'selected' : '') + '>Ativo</option><option value="past_due" ' + (status === 'past_due' ? 'selected' : '') + '>Vencido</option><option value="suspended" ' + (status === 'suspended' ? 'selected' : '') + '>Suspenso</option><option value="cancelled" ' + (status === 'cancelled' ? 'selected' : '') + '>Cancelado</option></select></td><td><input class="input compact" data-admin-field="maxDevices" type="number" min="0" value="' + safe(row.max_devices || 0) + '"><small>' + safe(row.connectedDevices || 0) + ' conectado(s)</small></td><td><input class="input compact" data-admin-field="monthlyMessageLimit" type="number" min="0" value="' + safe(row.monthly_message_limit || 0) + '"><small>' + safe(row.messagesThisMonth || 0) + ' usadas</small></td><td><input class="input compact" data-admin-field="maxApps" type="number" min="0" value="' + safe(row.max_apps || 0) + '"><small>Apps/API</small></td><td><button class="btn primary" data-action="save-admin-tenant" data-id="' + safe(row.id) + '">Salvar</button></td></tr>';
+  }).join('') : '<tr><td colspan="7">Nenhum cliente encontrado.</td></tr>';
+  return '<div class="section-head"><div><h2>Admin AutoZap</h2><p>Painel do dono da plataforma: gerencie assinantes, planos, limites e acesso.</p></div><button class="btn ghost" data-action="refresh-remote">Atualizar</button></div><div class="banner"><div><h3>Modo administrador da plataforma</h3><p>Esta área não é o painel vendido ao assinante. Aqui você controla quem acessa, qual plano usa e quais limites cada cliente tem.</p></div><a class="btn" href="#planos">Ver planos comerciais</a></div><div class="stats">' + stat('Clientes', String(rows.length), 'Empresas cadastradas', 'OP') + stat('Ativos/teste', String(active), 'Com acesso liberado', 'OK', 'blue') + stat('Dispositivos', String(rows.reduce((sum,row)=>sum+(row.devices||0),0)), 'WhatsApps criados', 'WA') + stat('Mensagens mês', String(rows.reduce((sum,row)=>sum+(row.messagesThisMonth||0),0)), 'Saídas enviadas', 'EN', 'warn') + '</div><article class="card table-wrap"><table class="table"><thead><tr><th>Cliente</th><th>Plano</th><th>Status</th><th>Dispositivos</th><th>Mensagens/mês</th><th>Apps</th><th>Ação</th></tr></thead><tbody>' + body + '</tbody></table></article>';
 }
 
 function chatbotView() {
@@ -314,12 +321,13 @@ function updateAccountShell() {
   const tenant = account.tenant || {};
   const profile = account.profile || {};
   const subscription = account.subscription || {};
-  const name = tenant.name || profile.full_name || 'Minha operação';
+  const platformAdmin = !!account.platformAdmin;
+  const name = platformAdmin ? 'Admin AutoZap' : (tenant.name || profile.full_name || 'Minha operação');
   const roleMap = { owner: 'Assinante', admin: 'Administrador', reseller: 'Revendedor', agent: 'Atendente' };
-  const role = roleMap[profile.role] || (productionMode() ? 'Assinante' : 'Demonstração');
-  const mode = productionMode()
+  const role = platformAdmin ? 'Administrador da plataforma' : (roleMap[profile.role] || (productionMode() ? 'Assinante' : 'Demonstração'));
+  const mode = platformAdmin ? 'Gestão de assinantes' : (productionMode()
     ? (subscription.status === 'trial' && account.access?.trialDaysLeft ? `Teste grátis • ${account.access.trialDaysLeft} dia(s)` : 'Conta ativa')
-    : 'Modo demonstração local';
+    : 'Modo demonstração local');
   const initials = String(name).trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'AZ';
   const nameEl = document.querySelector('#workspace-name');
   const roleEl = document.querySelector('#workspace-role');
@@ -329,7 +337,16 @@ function updateAccountShell() {
   if (roleEl) roleEl.textContent = role;
   if (avatarEl) avatarEl.textContent = initials;
   if (modeEl) modeEl.textContent = mode;
+  const navEl = document.querySelector('#nav');
+  if (navEl && platformAdmin && navEl.dataset.mode !== 'admin') {
+    navEl.dataset.mode = 'admin';
+    navEl.innerHTML = '<p>GESTÃO DA PLATAFORMA</p><a href="#dashboard" data-route="dashboard" class="active"><i>ADM</i> Visão geral</a><a href="#admin" data-route="admin"><i>CL</i> Clientes e planos</a><a href="#logs" data-route="logs"><i>LG</i> Logs globais</a><a href="#planos" data-route="planos"><i>PL</i> Planos comerciais</a><p>ATALHOS DO PRODUTO</p><a href="#dispositivos" data-route="dispositivos"><i>WA</i> Minha operação</a>';
+  } else if (navEl && !platformAdmin && navEl.dataset.mode === 'admin') {
+    navEl.dataset.mode = 'tenant';
+    navEl.innerHTML = defaultNavHtml;
+  }
 }
+
 async function syncRemote() {
   if (window.autoZapAuth?.mode !== 'production') return;
   try {
@@ -494,9 +511,9 @@ function copy(text, message) {
 }
 
 function render() {
-  const r = route();
+  const r = effectiveRoute();
   title.textContent = titles[r] || 'Dashboard';
-  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === r));
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === route() || a.dataset.route === r));
   app.innerHTML = (views[r] || views.dashboard)();
   const form = document.querySelector('#send-form');
   if (form) form.onsubmit = e => { e.preventDefault(); toast('Envio simulado. Configure o provedor WhatsApp para enviar de verdade.'); };
@@ -520,6 +537,20 @@ document.addEventListener('click', async e => {
   }
   if (a === 'plan-interest') {
     toast('Plano selecionado. Próximo passo: conectar gateway de pagamento.');
+  }
+  if (a === 'save-admin-tenant') {
+    const row = b.closest('tr[data-tenant]');
+    const field = name => row?.querySelector(`[data-admin-field="${name}"]`)?.value;
+    try {
+      const response = await window.apiFetch('/api/admin/overview', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tenantId: b.dataset.id, planCode: field('planCode'), status: field('status'), maxDevices: field('maxDevices'), maxApps: field('maxApps'), monthlyMessageLimit: field('monthlyMessageLimit') }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Falha ao atualizar cliente');
+      state.adminDashboard = data;
+      toast('Cliente atualizado.');
+      render();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Falha ao atualizar cliente.');
+    }
   }
   if (a === 'sign-out') { window.signOut?.(); return; }
   if (a === 'new-rule') openRule();
