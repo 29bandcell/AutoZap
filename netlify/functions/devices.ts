@@ -54,19 +54,10 @@ async function createEvolutionInstance(instanceName: string) {
 async function getQrCode(instanceName: string, created: any) {
   const fromCreate = extractQr(created);
   if (fromCreate) return fromCreate;
-  const paths = [`/instance/connect/${encodeURIComponent(instanceName)}`, `/instance/qrcode/${encodeURIComponent(instanceName)}`];
-  let lastError: unknown;
-  for (const path of paths) {
-    try {
-      const data = await evolution(path);
-      const qr = extractQr(data);
-      if (qr) return qr;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  if (lastError instanceof Error) throw lastError;
-  return null;
+  const data = await evolution(`/instance/connect/${encodeURIComponent(instanceName)}`);
+  const qr = extractQr(data);
+  if (qr) return qr;
+  throw new Error("A Evolution respondeu ao /instance/connect, mas não devolveu QR Code. Exclua este dispositivo pendente e crie outro para gerar um QR novo.");
 }
 
 const safeName = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 32);

@@ -368,7 +368,7 @@ async function openExistingQrModal(id) {
     result.innerHTML = `<div class="qr-result"><strong>Instância: ${safe(data.instanceName || device?.instance_name || device?.name || '')}</strong>${qr?`<img src="${qr}" alt="QR Code do WhatsApp"><p>WhatsApp → Aparelhos conectados → Conectar aparelho</p>`:'<p>A Evolution não devolveu um QR Code para esta instância.</p>'}<span class="badge pending" id="connection-state">Aguardando leitura</span></div>`;
     if (qr) watchConnection(id);
   } catch (error) {
-    result.innerHTML = `<div class="call-note"><strong>Não foi possível gerar o QR</strong><p>${safe(error.message)}</p></div>`;
+    result.innerHTML = `<div class="call-note"><strong>Não foi possível gerar o QR</strong><p>${safe(error.message)}</p><p>Se esse QR expirou, feche esta janela, clique em Excluir no dispositivo pendente e crie novamente.</p></div>`;
   }
 }
 
