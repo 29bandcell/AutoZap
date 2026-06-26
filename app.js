@@ -178,9 +178,9 @@ function plansView() {
   const currentPlan = String(subscription.plan_code || tenant.plan_code || 'starter').toLowerCase();
   const status = subscription.status || tenant.status || (productionMode() ? 'trial' : 'demo');
   const plans = [
-    { id: 'starter', name: 'Starter', price: 'R$ 49/mês', devices: 1, apps: 1, messages: 1000, fit: 'Teste grátis, operação pequena e validação.' },
-    { id: 'pro', name: 'Profissional', price: 'R$ 97/mês', devices: 3, apps: 3, messages: 5000, fit: 'Revenda com mais de um número e mais volume.' },
-    { id: 'agency', name: 'Agência', price: 'Sob consulta', devices: 10, apps: 10, messages: 25000, fit: 'Para vender AutoZap para vários clientes.' }
+    { id: 'starter', name: 'Starter', price: 'R$ 39,90/mês', devices: 1, apps: 1, messages: 1000, fit: 'Teste grátis, operação pequena e validação.' },
+    { id: 'pro', name: 'Profissional', price: 'R$ 59,90/mês', devices: 3, apps: 3, messages: 5000, fit: 'Revenda com mais de um número e mais volume.' },
+    { id: 'agency', name: 'Agência', price: 'R$ 137,90/mês', devices: 10, apps: 10, messages: 25000, fit: 'Para vender AutoZap para vários clientes.' }
   ];
   const cards = plans.map(plan => '<article class="card"><div class="card-head"><h2>' + plan.name + '</h2>' + (plan.id === currentPlan ? badge('Ativo') : '<span class="tag">Upgrade</span>') + '</div><h3>' + plan.price + '</h3><div class="health-stack"><div><span>Dispositivos</span><strong>' + plan.devices + '</strong></div><div><span>Apps/API</span><strong>' + plan.apps + '</strong></div><div><span>Mensagens/mês</span><strong>' + plan.messages.toLocaleString('pt-BR') + '</strong></div></div><p>' + plan.fit + '</p><button class="btn ' + (plan.id === currentPlan ? 'ghost' : 'primary') + '" data-action="plan-interest" data-plan="' + plan.id + '">' + (plan.id === currentPlan ? 'Plano atual' : 'Quero esse plano') + '</button></article>').join('');
   return '<div class="section-head"><div><h2>Planos e assinatura</h2><p>Base comercial para vender o AutoZap com teste grátis, limites e upgrades.</p></div><a class="btn primary" href="#admin">Ver clientes</a></div><div class="banner"><div><h3>Conta atual: ' + safe(currentPlan.toUpperCase()) + ' • ' + safe(status) + '</h3><p>Teste grátis restante: ' + safe(account.access?.trialDaysLeft ?? 0) + ' dia(s). Limites são aplicados por empresa/cliente.</p></div><a class="btn" href="#dispositivos">Conectar WhatsApp</a></div><div class="stats">' + stat('Dispositivos', usageText(usage.devicesUsed, usage.maxDevices), 'Limite do plano', 'WA') + stat('Apps/API', usageText(usage.appsUsed, usage.maxApps), 'Credenciais externas', 'API', 'blue') + stat('Links IPTV', String(usage.testLinksUsed || state.testLinks.length), 'URLs cadastradas', 'TV') + stat('Mensagens mês', usageText(usage.messagesUsedThisMonth, usage.messagesLimit), 'Enviadas com sucesso', 'EN', 'warn') + '</div><div class="integration-grid">' + cards + '</div><article class="card" style="margin-top:18px"><div class="card-head"><h2>Próxima etapa comercial</h2></div><p>Quando você escolher o gateway de pagamento, essa tela passa a criar assinatura, liberar teste de 3 dias e bloquear/reativar automaticamente pelo status do pagamento.</p></article>';
@@ -582,6 +582,7 @@ document.querySelector('#mobile-menu').onclick = () => document.querySelector('.
 window.addEventListener('hashchange', render);
 window.addEventListener('autozap-authenticated', event => { if (!event.detail?.demo) syncRemote(); });
 render();
+
 
 
 
