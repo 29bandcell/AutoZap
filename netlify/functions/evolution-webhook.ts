@@ -98,14 +98,14 @@ const parseDateTime = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 const pickRenewalSource = (payload: any) => payload?.data && typeof payload.data === "object" ? payload.data : (payload && typeof payload === "object" ? payload : {});
-function renewalInfo(providerResponse: unknown, fallbackReply = "") {
+function renewalInfo(providerResponse: unknown, fallbackReply = "", fallbackRenewUrl = "") {
   const source: any = pickRenewalSource(providerResponse);
   const expiresRaw = source.expires_at_tz || source.expires_at || source.expiresAt || source.expiration || source.vencimento || source.due_at;
   const expiresMs = parseDateTime(expiresRaw);
   const username = String(source.username || source.user || source.login || source.iptv_username || "").trim();
   const password = String(source.password || source.pass || source.iptv_password || "").trim();
   const plan = String(source.package || source.plan || source.plan_name || "").trim();
-  const renewUrl = String(source.renew_url || source.checkout_url || source.payment_url || source.paymentLink || "").trim();
+  const renewUrl = String(source.renew_url || source.checkout_url || source.payment_url || source.paymentLink || fallbackRenewUrl || "").trim();
   const template = String(source.customer_renew_template || source.renew_template || source.renewal_message || "").trim();
   const customerId = String(source.id || source.customer_id || source.client_id || source.iptv_external_id || "").trim();
   const fallback = expiresMs || renewUrl || username ? [
@@ -116,11 +116,13 @@ function renewalInfo(providerResponse: unknown, fallbackReply = "") {
     renewUrl ? "\n\nPara renovar, acesse:\n" + renewUrl : "",
     "\n\nSe quiser renovar, fale com nosso atendimento."
   ].join("") : "";
-  return { source, expiresRaw, expiresMs, username, password, plan, renewUrl, template, customerId, message: template || fallback || fallbackReply };
+  const message = template || fallback || fallbackReply;
+  const finalMessage = renewUrl && message && !/https?:\/\//i.test(message) ? `${message}\n\n💳 Assinar/Renovar Plano:\n✔️ ${renewUrl}` : message;
+  return { source, expiresRaw, expiresMs, username, password, plan, renewUrl, template, customerId, message: finalMessage };
 }
-async function scheduleRenewalReminder(params: { device: any; phone: string; data: any; contact: any; providerResponse: unknown; reply: string; messageId: string }) {
-  const { device, phone, data, contact, providerResponse, reply, messageId } = params;
-  const info = renewalInfo(providerResponse, "");
+async function scheduleRenewalReminder(params: { device: any; phone: string; data: any; contact: any; providerResponse: unknown; reply: string; messageId: string; packageConfig?: any }) {
+  const { device, phone, data, contact, providerResponse, reply, messageId, packageConfig } = params;
+  const info = renewalInfo(providerResponse, "", String(packageConfig?.renewal_checkout_url || ""));
   if (!info.message.trim() || (!info.expiresMs && !info.renewUrl && !info.template && !info.username)) return;
   const metadata = contact?.metadata && typeof contact.metadata === "object" ? contact.metadata : {};
   await upsertContact(device, phone, data, {
@@ -131,6 +133,7 @@ async function scheduleRenewalReminder(params: { device: any; phone: string; dat
       password: info.password || null,
       plan: info.plan || null,
       renew_url: info.renewUrl || null,
+      package_id: packageConfig?.id || null,
       expires_at: info.expiresRaw || null,
       reminder_message: info.message,
       provider_response_saved_at: new Date().toISOString()
@@ -146,6 +149,16 @@ async function scheduleRenewalReminder(params: { device: any; phone: string; dat
     const msg = error instanceof Error ? error.message : String(error);
     if (!msg.includes("409") && !msg.toLowerCase().includes("duplicate")) throw error;
   }
+}
+async function findRulePackageConfig(tenantId: string, deviceId: string, rule: any) {
+  const actionUrl = String(rule?.action?.url || rule?.action?.webhook_url || rule?.action?.endpoint || "").trim();
+  const packages = await supabase(`iptv_test_packages?tenant_id=eq.${tenantId}&status=eq.active&select=id,device_id,keyword,url,renewal_checkout_url&limit=100`);
+  return (packages || []).find((item: any) => {
+    const sameDevice = !item.device_id || item.device_id === deviceId;
+    const sameUrl = actionUrl && String(item.url || "") === actionUrl;
+    const sameKeyword = normalizeText(String(item.keyword || "")) === normalizeText(String(rule?.keyword || ""));
+    return sameDevice && (sameUrl || sameKeyword);
+  }) || null;
 }
 async function firstTestKeyword(tenantId: string, deviceId: string) {
   const packages = await supabase(`iptv_test_packages?tenant_id=eq.${tenantId}&status=eq.active&select=keyword,device_id&order=created_at.desc&limit=10`);
@@ -244,7 +257,9 @@ export default async (req: Request) => {
     };
     let providerResponse: unknown = null;
     let reply = "";
+    let packageConfig: any = null;
     if (["webhook", "url", "external_webhook", "server"].includes(actionType)) {
+      packageConfig = await findRulePackageConfig(device.tenant_id, device.id, rule);
       providerResponse = await callExternalWebhook(rule, webhookPayload);
       reply = responseToText(providerResponse, String(rule.reply_template || ""), { name: firstName(data.pushName), inbound: webhookPayload, api: typeof providerResponse === "object" ? providerResponse : { text: providerResponse } });
     } else if (!rule.action?.type || actionType === "reply") {
@@ -256,7 +271,7 @@ export default async (req: Request) => {
     if (!reply.trim()) return new Response(null, { status: 204 });
     const result = await send(instance, phone, reply);
     await logOutbound(device, messageId, phone, reply, { whatsapp: result, webhook: providerResponse });
-    if (providerResponse) await scheduleRenewalReminder({ device, phone, data, contact, providerResponse, reply, messageId });
+    if (providerResponse) await scheduleRenewalReminder({ device, phone, data, contact, providerResponse, reply, messageId, packageConfig });
     return new Response(null, { status: 204 });
   } catch (error) {
     console.error("Evolution webhook error", error);

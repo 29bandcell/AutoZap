@@ -449,3 +449,7 @@ Aguardo sua resposta 🤓
 
 alter table public.contacts
   add column if not exists metadata jsonb not null default '{}'::jsonb;
+
+-- package renewal checkout url
+alter table public.iptv_test_packages
+  add column if not exists renewal_checkout_url text;

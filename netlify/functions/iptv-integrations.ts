@@ -1,4 +1,4 @@
-﻿import type { Config, Context } from "@netlify/functions";
+import type { Config, Context } from "@netlify/functions";
 import { json } from "./_shared/http.ts";
 import { authError, requireTenantUser } from "./_shared/auth.ts";
 import { supabase } from "./_shared/supabase.ts";
@@ -17,10 +17,14 @@ const assertExternalUrl = (value: string) => {
   if (["localhost", "127.0.0.1", "0.0.0.0"].includes(parsed.hostname)) throw new Error("URL local não é permitida em produção");
   return parsed.toString();
 };
+const optionalExternalUrl = (value: unknown) => {
+  const url = clean(value, 1000);
+  return url ? assertExternalUrl(url) : null;
+};
 
 async function getPayload(tenantId: string) {
   const [integration] = await supabase(`iptv_integrations?tenant_id=eq.${tenantId}&select=id,name,mode,api_base_url,auth_type,notes,status,created_at,updated_at&limit=1`);
-  const packages = await supabase(`iptv_test_packages?tenant_id=eq.${tenantId}&select=id,integration_id,device_id,package_name,keyword,method,url,status,created_at,updated_at&order=created_at.desc`);
+  const packages = await supabase(`iptv_test_packages?tenant_id=eq.${tenantId}&select=id,integration_id,device_id,package_name,keyword,method,url,renewal_checkout_url,status,created_at,updated_at&order=created_at.desc`);
   return { integration: integration || null, packages: packages || [] };
 }
 
@@ -63,6 +67,7 @@ export default async (req: Request, context: Context) => {
         keyword: clean(body.keyword, 120),
         method: method(body.method),
         url,
+        renewal_checkout_url: optionalExternalUrl(body.renewalCheckoutUrl || body.renewal_checkout_url),
         status: status(body.status)
       };
       if (!payload.package_name || !payload.keyword) return json({ error: "Nome do pacote e palavra-chave são obrigatórios" }, 400);
@@ -76,7 +81,10 @@ export default async (req: Request, context: Context) => {
       if (body.packageName || body.package_name) payload.package_name = clean(body.packageName || body.package_name, 140);
       if (body.keyword) payload.keyword = clean(body.keyword, 120);
       if (body.method) payload.method = method(body.method);
-      if (body.url) payload.url = assertExternalUrl(clean(body.url, 1000));
+      if (Object.prototype.hasOwnProperty.call(body, "url") && body.url) payload.url = assertExternalUrl(clean(body.url, 1000));
+      if (Object.prototype.hasOwnProperty.call(body, "renewalCheckoutUrl") || Object.prototype.hasOwnProperty.call(body, "renewal_checkout_url")) {
+        payload.renewal_checkout_url = optionalExternalUrl(body.renewalCheckoutUrl || body.renewal_checkout_url);
+      }
       if (body.status) payload.status = status(body.status);
       payload.updated_at = new Date().toISOString();
       await supabase(`iptv_test_packages?id=eq.${encodeURIComponent(id)}&tenant_id=eq.${tenantId}`, { method: "PATCH", body: JSON.stringify(payload) });
