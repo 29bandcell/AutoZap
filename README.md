@@ -46,9 +46,37 @@ EVOLUTION_WEBHOOK_SECRET=segredo-aleatorio
 APP_KEY_PEPPER=segredo-aleatorio
 AUTOMATION_SECRET=segredo-aleatorio
 PUBLIC_SITE_URL=https://SEU-SITE.netlify.app
+SITE_URL=https://SEU-SITE.netlify.app
+AUTOZAP_ADMIN_EMAILS=admin@seudominio.com
+MERCADOPAGO_MODE=production
+MERCADOPAGO_ACCESS_TOKEN=APP_USR-...
+MERCADOPAGO_PUBLIC_KEY=APP_USR-...
+MERCADOPAGO_WEBHOOK_SECRET=assinatura_secreta_do_webhook
+MERCADOPAGO_TEST_ACCESS_TOKEN=TEST-...
+MERCADOPAGO_TEST_PUBLIC_KEY=TEST-...
 
 Nunca coloque SUPABASE_SERVICE_ROLE_KEY, EVOLUTION_API_KEY, peppers ou segredos em config.js, Git ou no navegador.
 
+
+## Mercado Pago
+
+A integração de cobrança usa assinaturas recorrentes do Mercado Pago.
+
+Endpoints criados:
+
+- POST /api/mercadopago/checkout — cria a assinatura do plano escolhido e retorna/redireciona para o link de pagamento.
+- POST /api/mercadopago/webhook — recebe eventos de pagamentos e planos/assinaturas e atualiza tenant_subscriptions/tenants no Supabase.
+
+Configure no Mercado Pago o webhook:
+
+https://SEU-SITE.netlify.app/api/mercadopago/webhook
+
+Eventos recomendados:
+
+- Pagamentos
+- Planos e assinaturas
+
+O webhook valida a assinatura secreta quando MERCADOPAGO_WEBHOOK_SECRET estiver configurado.
 ## Endpoint para o painel IPTV
 
 POST https://SEU-SITE.netlify.app/api/iptv/send
@@ -83,4 +111,5 @@ Antes do primeiro cliente:
 ## Segurança operacional
 
 Credenciais publicadas anteriormente em capturas, chat ou DevTools devem ser revogadas e substituídas. Cada cliente deve usar um aplicativo próprio; nunca compartilhe uma App/Auth Key entre empresas.
+
 

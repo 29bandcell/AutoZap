@@ -183,7 +183,7 @@ function plansView() {
     { id: 'agency', name: 'Agência', price: 'R$ 137,90/mês', devices: 10, apps: 10, messages: 25000, fit: 'Para vender AutoZap para vários clientes.' }
   ];
   const cards = plans.map(plan => '<article class="card"><div class="card-head"><h2>' + plan.name + '</h2>' + (plan.id === currentPlan ? badge('Ativo') : '<span class="tag">Upgrade</span>') + '</div><h3>' + plan.price + '</h3><div class="health-stack"><div><span>Dispositivos</span><strong>' + plan.devices + '</strong></div><div><span>Apps/API</span><strong>' + plan.apps + '</strong></div><div><span>Mensagens/mês</span><strong>' + plan.messages.toLocaleString('pt-BR') + '</strong></div></div><p>' + plan.fit + '</p><button class="btn ' + (plan.id === currentPlan ? 'ghost' : 'primary') + '" data-action="plan-interest" data-plan="' + plan.id + '">' + (plan.id === currentPlan ? 'Plano atual' : 'Quero esse plano') + '</button></article>').join('');
-  return '<div class="section-head"><div><h2>Planos e assinatura</h2><p>Base comercial para vender o AutoZap com teste grátis, limites e upgrades.</p></div><a class="btn primary" href="#admin">Ver clientes</a></div><div class="banner"><div><h3>Conta atual: ' + safe(currentPlan.toUpperCase()) + ' • ' + safe(status) + '</h3><p>Teste grátis restante: ' + safe(account.access?.trialDaysLeft ?? 0) + ' dia(s). Limites são aplicados por empresa/cliente.</p></div><a class="btn" href="#dispositivos">Conectar WhatsApp</a></div><div class="stats">' + stat('Dispositivos', usageText(usage.devicesUsed, usage.maxDevices), 'Limite do plano', 'WA') + stat('Apps/API', usageText(usage.appsUsed, usage.maxApps), 'Credenciais externas', 'API', 'blue') + stat('Links IPTV', String(usage.testLinksUsed || state.testLinks.length), 'URLs cadastradas', 'TV') + stat('Mensagens mês', usageText(usage.messagesUsedThisMonth, usage.messagesLimit), 'Enviadas com sucesso', 'EN', 'warn') + '</div><div class="integration-grid">' + cards + '</div><article class="card" style="margin-top:18px"><div class="card-head"><h2>Próxima etapa comercial</h2></div><p>Quando você escolher o gateway de pagamento, essa tela passa a criar assinatura, liberar teste de 3 dias e bloquear/reativar automaticamente pelo status do pagamento.</p></article>';
+  return '<div class="section-head"><div><h2>Planos e assinatura</h2><p>Seu plano atual, limites contratados e opções de upgrade.</p></div><a class="btn primary" href="#dispositivos">Conectar WhatsApp</a></div><div class="banner"><div><h3>Conta atual: ' + safe(currentPlan.toUpperCase()) + ' • ' + safe(status) + '</h3><p>Teste grátis restante: ' + safe(account.access?.trialDaysLeft ?? 0) + ' dia(s). Limites são aplicados por empresa/cliente.</p></div><a class="btn" href="#paineliptv">Configurar IPTV</a></div><div class="stats">' + stat('Dispositivos', usageText(usage.devicesUsed, usage.maxDevices), 'Limite do plano', 'WA') + stat('Apps/API', usageText(usage.appsUsed, usage.maxApps), 'Credenciais externas', 'API', 'blue') + stat('Links IPTV', String(usage.testLinksUsed || state.testLinks.length), 'URLs cadastradas', 'TV') + stat('Mensagens mês', usageText(usage.messagesUsedThisMonth, usage.messagesLimit), 'Enviadas com sucesso', 'EN', 'warn') + '</div><div class="integration-grid">' + cards + '</div>';
 }
 
 function adminView() {
@@ -197,7 +197,7 @@ function adminView() {
     const status = row.subscription?.status || row.status || 'trial';
     return '<tr data-tenant="' + safe(row.id) + '"><td><strong>' + safe(row.name) + '</strong><br><small>' + safe(row.slug || row.id) + '</small><br><small>' + safe(row.users || 0) + ' usuário(s)</small></td><td><select class="select compact" data-admin-field="planCode"><option value="starter" ' + (plan === 'starter' ? 'selected' : '') + '>Starter</option><option value="pro" ' + (plan === 'pro' ? 'selected' : '') + '>Pro</option><option value="agency" ' + (plan === 'agency' ? 'selected' : '') + '>Agência</option></select></td><td><select class="select compact" data-admin-field="status"><option value="trial" ' + (status === 'trial' ? 'selected' : '') + '>Teste</option><option value="active" ' + (status === 'active' ? 'selected' : '') + '>Ativo</option><option value="past_due" ' + (status === 'past_due' ? 'selected' : '') + '>Vencido</option><option value="suspended" ' + (status === 'suspended' ? 'selected' : '') + '>Suspenso</option><option value="cancelled" ' + (status === 'cancelled' ? 'selected' : '') + '>Cancelado</option></select></td><td><input class="input compact" data-admin-field="maxDevices" type="number" min="0" value="' + safe(row.max_devices || 0) + '"><small>' + safe(row.connectedDevices || 0) + ' conectado(s)</small></td><td><input class="input compact" data-admin-field="monthlyMessageLimit" type="number" min="0" value="' + safe(row.monthly_message_limit || 0) + '"><small>' + safe(row.messagesThisMonth || 0) + ' usadas</small></td><td><input class="input compact" data-admin-field="maxApps" type="number" min="0" value="' + safe(row.max_apps || 0) + '"><small>Apps/API</small></td><td><button class="btn primary" data-action="save-admin-tenant" data-id="' + safe(row.id) + '">Salvar</button></td></tr>';
   }).join('') : '<tr><td colspan="7">Nenhum cliente encontrado.</td></tr>';
-  return '<div class="section-head"><div><h2>Admin AutoZap</h2><p>Painel do dono da plataforma: gerencie assinantes, planos, limites e acesso.</p></div><button class="btn ghost" data-action="refresh-remote">Atualizar</button></div><div class="banner"><div><h3>Modo administrador da plataforma</h3><p>Esta área não é o painel vendido ao assinante. Aqui você controla quem acessa, qual plano usa e quais limites cada cliente tem.</p></div><a class="btn" href="#planos">Ver planos comerciais</a></div><div class="stats">' + stat('Clientes', String(rows.length), 'Empresas cadastradas', 'OP') + stat('Ativos/teste', String(active), 'Com acesso liberado', 'OK', 'blue') + stat('Dispositivos', String(rows.reduce((sum,row)=>sum+(row.devices||0),0)), 'WhatsApps criados', 'WA') + stat('Mensagens mês', String(rows.reduce((sum,row)=>sum+(row.messagesThisMonth||0),0)), 'Saídas enviadas', 'EN', 'warn') + '</div><article class="card table-wrap"><table class="table"><thead><tr><th>Cliente</th><th>Plano</th><th>Status</th><th>Dispositivos</th><th>Mensagens/mês</th><th>Apps</th><th>Ação</th></tr></thead><tbody>' + body + '</tbody></table></article>';
+  return '<div class="section-head"><div><h2>Admin AutoZap</h2><p>Painel do dono da plataforma: gerencie assinantes, planos, limites e acesso.</p></div><button class="btn ghost" data-action="refresh-remote">Atualizar</button></div><div class="banner"><div><h3>Modo administrador da plataforma</h3><p>Esta área não é o painel vendido ao assinante. Aqui você controla quem acessa, qual plano usa e quais limites cada cliente tem.</p></div><a class="btn" href="#planos">Ver planos comerciais</a></div><article class="card" style="margin-bottom:18px"><div class="card-head"><h2>Próxima etapa comercial</h2></div><p>Quando você escolher o gateway de pagamento, essa tela passa a criar assinatura, liberar teste de 3 dias e bloquear/reativar automaticamente pelo status do pagamento.</p></article><div class="stats">' + stat('Clientes', String(rows.length), 'Empresas cadastradas', 'OP') + stat('Ativos/teste', String(active), 'Com acesso liberado', 'OK', 'blue') + stat('Dispositivos', String(rows.reduce((sum,row)=>sum+(row.devices||0),0)), 'WhatsApps criados', 'WA') + stat('Mensagens mês', String(rows.reduce((sum,row)=>sum+(row.messagesThisMonth||0),0)), 'Saídas enviadas', 'EN', 'warn') + '</div><article class="card table-wrap"><table class="table"><thead><tr><th>Cliente</th><th>Plano</th><th>Status</th><th>Dispositivos</th><th>Mensagens/mês</th><th>Apps</th><th>Ação</th></tr></thead><tbody>' + body + '</tbody></table></article>';
 }
 
 function chatbotView() {
@@ -510,11 +510,23 @@ function copy(text, message) {
   navigator.clipboard?.writeText(text).then(() => toast(message)).catch(() => toast(text));
 }
 
+function subscriberTopBar() {
+  const account = state.account || {};
+  if (account.platformAdmin) return '';
+  const tenant = account.tenant || {};
+  const subscription = account.subscription || {};
+  const usage = account.usage || {};
+  const plan = subscription.plan_code || tenant.plan_code || 'starter';
+  const status = subscription.status || tenant.status || (productionMode() ? 'trial' : 'demo');
+  const name = tenant.name || account.profile?.full_name || 'Minha operação';
+  return '<section class="subscriber-topbar"><div><small>Assinante</small><strong>' + safe(name) + '</strong></div><div><small>Plano</small><strong>' + safe(String(plan).toUpperCase()) + '</strong></div><div><small>Status</small><strong>' + safe(adminStatusLabel(status)) + '</strong></div><div><small>Teste grátis</small><strong>' + safe(account.access?.trialDaysLeft ?? 0) + ' dia(s)</strong></div><div><small>Uso mensal</small><strong>' + usageText(usage.messagesUsedThisMonth, usage.messagesLimit) + '</strong></div></section>';
+}
+
 function render() {
   const r = effectiveRoute();
   title.textContent = titles[r] || 'Dashboard';
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === route() || a.dataset.route === r));
-  app.innerHTML = (views[r] || views.dashboard)();
+  app.innerHTML = subscriberTopBar() + (views[r] || views.dashboard)();
   const form = document.querySelector('#send-form');
   if (form) form.onsubmit = e => { e.preventDefault(); toast('Envio simulado. Configure o provedor WhatsApp para enviar de verdade.'); };
 }
@@ -536,7 +548,24 @@ document.addEventListener('click', async e => {
     toast('Dados atualizados.');
   }
   if (a === 'plan-interest') {
-    toast('Plano selecionado. Próximo passo: conectar gateway de pagamento.');
+    const planCode = b.dataset.plan;
+    const currentPlan = String(state.account?.subscription?.plan_code || state.account?.tenant?.plan_code || '').toLowerCase();
+    if (planCode && planCode === currentPlan) { toast('Este já é seu plano atual.'); return; }
+    if (!productionMode()) { toast('Checkout disponível apenas no ambiente publicado.'); return; }
+    try {
+      b.disabled = true;
+      b.textContent = 'Abrindo pagamento...';
+      const response = await window.apiFetch('/api/mercadopago/checkout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ planCode }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Não foi possível criar assinatura');
+      const checkoutUrl = data.data?.checkoutUrl || data.data?.sandboxCheckoutUrl;
+      if (!checkoutUrl) throw new Error('Mercado Pago não retornou link de pagamento');
+      location.href = checkoutUrl;
+    } catch (error) {
+      b.disabled = false;
+      toast(error instanceof Error ? error.message : 'Falha ao abrir pagamento.');
+      render();
+    }
   }
   if (a === 'save-admin-tenant') {
     const row = b.closest('tr[data-tenant]');
