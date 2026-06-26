@@ -365,7 +365,8 @@ async function openExistingQrModal(id) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Não foi possível gerar QR Code');
     const qr = data.qrCode ? (data.qrCode.startsWith('data:') ? data.qrCode : `data:image/png;base64,${data.qrCode}`) : '';
-    result.innerHTML = `<div class="qr-result"><strong>Instância: ${safe(data.instanceName || device?.instance_name || device?.name || '')}</strong>${qr?`<img src="${qr}" alt="QR Code do WhatsApp"><p>WhatsApp → Aparelhos conectados → Conectar aparelho</p>`:'<p>A Evolution não devolveu um QR Code para esta instância.</p>'}<span class="badge pending" id="connection-state">Aguardando leitura</span></div>`;
+    const webhookNote = data.webhookWarning ? `<div class="call-note"><strong>Atenção ao webhook</strong><p>${safe(data.webhookWarning)}</p><p>Se a resposta automática não funcionar, configure o webhook manualmente na Evolution.</p></div>` : '';
+    result.innerHTML = `<div class="qr-result"><strong>Instância: ${safe(data.instanceName || device?.instance_name || device?.name || '')}</strong>${qr?`<img src="${qr}" alt="QR Code do WhatsApp"><p>WhatsApp → Aparelhos conectados → Conectar aparelho</p>`:'<p>A Evolution não devolveu um QR Code para esta instância.</p>'}<span class="badge pending" id="connection-state">Aguardando leitura</span></div>${webhookNote}`;
     if (qr) watchConnection(id);
   } catch (error) {
     result.innerHTML = `<div class="call-note"><strong>Não foi possível gerar o QR</strong><p>${safe(error.message)}</p><p>Se esse QR expirou, feche esta janela, clique em Excluir no dispositivo pendente e crie novamente.</p></div>`;

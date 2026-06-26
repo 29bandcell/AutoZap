@@ -79,6 +79,32 @@ async function tryDeleteEvolutionInstance(instanceName: string) {
   return { ok: false, warning: errors[0] || "Evolution não confirmou a exclusão da instância" };
 }
 
+function webhookUrl(req: Request) {
+  const origin = new URL(req.url).origin;
+  const token = encodeURIComponent(requiredEnv("EVOLUTION_WEBHOOK_SECRET"));
+  return `${origin}/api/evolution/webhook?token=${token}`;
+}
+
+async function configureEvolutionWebhook(instanceName: string, url: string) {
+  const events = ["MESSAGES_UPSERT", "CONNECTION_UPDATE"];
+  const payloads = [
+    { webhook: { enabled: true, url, webhookByEvents: false, webhookBase64: false, events } },
+    { webhook: { enabled: true, url, webhook_by_events: false, webhook_base64: false, events } },
+    { enabled: true, url, webhookByEvents: false, webhookBase64: false, events },
+    { enabled: true, url, webhook_by_events: false, webhook_base64: false, events }
+  ];
+  let lastError: unknown;
+  for (const payload of payloads) {
+    try {
+      await evolution(`/webhook/set/${encodeURIComponent(instanceName)}`, { method: "POST", body: JSON.stringify(payload) });
+      return { ok: true, warning: null };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  return { ok: false, warning: lastError instanceof Error ? lastError.message : "Não foi possível configurar webhook na Evolution" };
+}
+
 const safeName = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 32);
 
 export default async (req: Request, context: Context) => {
@@ -100,9 +126,10 @@ export default async (req: Request, context: Context) => {
     if (req.method === "POST" && id) {
       const devices = await supabase(`devices?id=eq.${encodeURIComponent(id)}&tenant_id=eq.${tenantId}&select=id,instance_name&limit=1`);
       if (!devices?.length) return json({ error: "Dispositivo não encontrado" }, 404);
+      const webhook = await configureEvolutionWebhook(devices[0].instance_name, webhookUrl(req));
       const qrCode = await getQrCode(devices[0].instance_name, null);
       await supabase(`devices?id=eq.${devices[0].id}`, { method: "PATCH", body: JSON.stringify({ status: "connecting", last_seen_at: new Date().toISOString() }) });
-      return json({ ok: true, id: devices[0].id, instanceName: devices[0].instance_name, qrCode });
+      return json({ ok: true, id: devices[0].id, instanceName: devices[0].instance_name, qrCode, webhookWarning: webhook.warning });
     }
     if (req.method === "DELETE" && id) {
       const devices = await supabase(`devices?id=eq.${encodeURIComponent(id)}&tenant_id=eq.${tenantId}&select=id,instance_name&limit=1`);
@@ -124,9 +151,10 @@ export default async (req: Request, context: Context) => {
     let created: any;
     try {
       created = await createEvolutionInstance(instanceName);
+      const webhook = await configureEvolutionWebhook(instanceName, webhookUrl(req));
       const qrCode = await getQrCode(instanceName, created);
       const [device] = await supabase("devices", { method: "POST", body: JSON.stringify({ tenant_id: tenantId, name, instance_name: instanceName, status: "connecting" }) });
-      return json({ ok: true, id: device.id, instanceName, state: created?.instance?.status || created?.instance?.state || "connecting", qrCode }, 201);
+      return json({ ok: true, id: device.id, instanceName, state: created?.instance?.status || created?.instance?.state || "connecting", qrCode, webhookWarning: webhook.warning }, 201);
     } catch (error) {
       if (created) { try { await evolution(`/instance/delete/${encodeURIComponent(instanceName)}`, { method: "DELETE" }); } catch {} }
       throw error;
