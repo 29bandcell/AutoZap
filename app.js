@@ -1,4 +1,4 @@
-﻿const app = document.querySelector('#app');
+const app = document.querySelector('#app');
 const title = document.querySelector('#page-title');
 const modal = document.querySelector('#modal');
 const modalContent = document.querySelector('#modal-content');
@@ -29,12 +29,28 @@ const demoTestUrls = [
   'https://demonstracao.qpanel.top/api/chatbot/BV4D3rLaqZ/BV4D3rLaqZ'
 ];
 const isDemoTestLink = link => demoTestUrls.includes(String(link?.url || ''));
+const defaultLeadGreeting = `Olá, que bom te ter aqui!
+
+Sou {{company_name}}. 🙍‍♂️
+
+🔸Em qual aparelho irá testar?
+
+Aguardo sua resposta 🤓
+
+1 - TV Box
+2 - Celular
+3 - Chromecast
+4 - Computador
+5 - Smart TV
+6 - Amazon Fire Stick`;
+const defaultLeadFollowup = `Digite '{{keyword}}' para receber um teste gratuito.`;
 
 const seed = {
   devices: [{ id: 'wa1', name: 'WhatsApp principal', phone: '+55 88 99999-0000', status: 'connected' }],
   apps: [],
   testLinks: [],
   iptvProvider: { mode: 'links', name: '', apiBaseUrl: '', authType: 'none', notes: 'Cliente cadastra seus links diretos de teste ou a API do provedor IPTV.' },
+  leadCapture: { enabled: true, greeting: defaultLeadGreeting, followup: defaultLeadFollowup },
   rules: [{
       id: 'r2',
       name: 'Consultar vencimento',
@@ -76,7 +92,7 @@ function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem('autozap-state'));
     if (!saved) return structuredClone(seed);
-    return { ...structuredClone(seed), ...saved, testLinks: (saved.testLinks || []).filter(link => !isDemoTestLink(link)), rules: (saved.rules || seed.rules).filter(rule => !demoTestUrls.includes(String(rule?.webhookUrl || ''))), iptvProvider: { ...structuredClone(seed).iptvProvider, ...(saved.iptvProvider || {}) } };
+    return { ...structuredClone(seed), ...saved, testLinks: (saved.testLinks || []).filter(link => !isDemoTestLink(link)), rules: (saved.rules || seed.rules).filter(rule => !demoTestUrls.includes(String(rule?.webhookUrl || ''))), iptvProvider: { ...structuredClone(seed).iptvProvider, ...(saved.iptvProvider || {}) }, leadCapture: { ...structuredClone(seed).leadCapture, ...(saved.leadCapture || {}) } };
   } catch {
     return structuredClone(seed);
   }
@@ -101,6 +117,37 @@ const formatDateTime = value => value ? new Date(value).toLocaleString('pt-BR') 
 const messageEventToLog = event => ({ id: event.id, at: formatDateTime(event.created_at || event.sent_at), from: event.phone || '-', keyword: event.direction === 'inbound' ? event.message : 'resposta enviada', rule: event.direction === 'inbound' ? 'Mensagem recebida' : 'Resposta do AutoZap', result: event.status === 'sent' ? 'Enviado' : event.status === 'failed' ? 'Falhou' : 'Processando', direction: event.direction || 'outbound', error: event.error_message || '', message: event.message || '' });
 const usageText = (used, limit) => limit ? String(used || 0) + ' / ' + String(limit) : String(used || 0);
 const adminStatusLabel = status => ({ trial: 'Teste', active: 'Ativo', past_due: 'Vencido', suspended: 'Suspenso', cancelled: 'Cancelado' }[String(status || '').toLowerCase()] || status || 'trial');
+const leadSettings = () => {
+  const tenant = state.account?.tenant || {};
+  return {
+    enabled: tenant.lead_capture_enabled ?? state.leadCapture?.enabled ?? true,
+    greeting: tenant.lead_greeting_template || state.leadCapture?.greeting || defaultLeadGreeting,
+    followup: tenant.lead_followup_template || state.leadCapture?.followup || defaultLeadFollowup
+  };
+};
+function leadSettingsCard() {
+  const lead = leadSettings();
+  return `<article class="card lead-card"><div class="card-head"><div><h2>Pré-atendimento do teste IPTV</h2><p>Mensagem inicial antes de liberar o teste real. Use {{company_name}}, {{name}} e {{keyword}}.</p></div><label class="toggle-line"><input type="checkbox" name="leadEnabled" form="lead-settings-form" ${lead.enabled ? 'checked' : ''}> Ativo</label></div><form id="lead-settings-form" class="lead-form"><div class="field full"><label>Saudação enviada no primeiro contato</label><textarea name="leadGreeting" rows="10">${safe(lead.greeting)}</textarea></div><div class="field full"><label>Mensagem depois que o cliente responde o número do aparelho</label><textarea name="leadFollowup" rows="3">${safe(lead.followup)}</textarea><small>O sistema troca {{keyword}} pela palavra-chave do primeiro pacote ativo, por exemplo: teste iptv.</small></div><div class="modal-actions"><button class="btn primary">Salvar pré-atendimento</button></div></form></article>`;
+}
+async function saveLeadSettings(e) {
+  e.preventDefault();
+  const f = new FormData(e.currentTarget);
+  const payload = { lead_capture_enabled: !!f.get('leadEnabled'), lead_greeting_template: f.get('leadGreeting'), lead_followup_template: f.get('leadFollowup') };
+  try {
+    if (productionMode()) {
+      const response = await window.apiFetch('/api/tenant-settings', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Falha ao salvar pré-atendimento');
+      state.account = { ...(state.account || {}), tenant: { ...(state.account?.tenant || {}), ...(data.data || payload) } };
+    }
+    state.leadCapture = { enabled: payload.lead_capture_enabled, greeting: payload.lead_greeting_template, followup: payload.lead_followup_template };
+    save();
+    toast('Pré-atendimento salvo.');
+    render();
+  } catch (error) {
+    toast(error instanceof Error ? error.message : 'Falha ao salvar pré-atendimento.');
+  }
+}
 function applyIptvRemote(payload) {
   if (!payload) return;
   state.iptvProvider = providerFromApi(payload.integration);
@@ -201,9 +248,8 @@ function adminView() {
 }
 
 function chatbotView() {
-  return `<div class="section-head"><div><h2>Respostas e automaÃ§Ãµes</h2><p>Cada resposta liga uma palavra-chave do WhatsApp a texto, template ou URL externa.</p></div><button class="btn primary" data-action="new-rule">+ Criar resposta</button></div><div class="stats">${stat('Respostas',state.rules.length,'Total cadastrado','â™Ÿ')}${stat('Ativas',state.rules.filter(r=>r.active).length,'Respondendo agora','âœ“','blue')}${stat('URLs/Webhooks',state.rules.filter(r=>String(r.responseType).includes('URL')||String(r.responseType).includes('Webhook')).length,'Criam teste no provedor','âš¡')}${stat('Chamadas de API','11','Hoje','âŒ')}</div><article class="card"><div class="filters"><input class="input" placeholder="Pesquisar regra ou palavra-chave"><select class="select"><option>Todos os dispositivos</option><option>WhatsApp principal</option></select></div>${state.rules.map(ruleCard).join('')}</article>`;
+  return `<div class="section-head"><div><h2>Respostas e automações</h2><p>Cada resposta liga uma palavra-chave do WhatsApp a texto, template ou URL externa.</p></div><button class="btn primary" data-action="new-rule">+ Criar resposta</button></div>${leadSettingsCard()}<div class="stats">${stat('Respostas',state.rules.length,'Total cadastrado','BOT')}${stat('Ativas',state.rules.filter(r=>r.active).length,'Respondendo agora','OK','blue')}${stat('URLs/Webhooks',state.rules.filter(r=>String(r.responseType).includes('URL')||String(r.responseType).includes('Webhook')).length,'Criam teste no provedor','⚡')}${stat('Chamadas de API','11','Hoje','API')}</div><article class="card"><div class="filters"><input class="input" placeholder="Pesquisar regra ou palavra-chave"><select class="select"><option>Todos os dispositivos</option><option>WhatsApp principal</option></select></div>${state.rules.map(ruleCard).join('')}</article>`;
 }
-
 function ruleCard(r) {
   return `<div class="rule-card"><div class="rule-top"><span class="automation-icon">${r.responseType?.includes('URL') || r.responseType?.includes('Webhook') ? 'âš¡' : 'â™Ÿ'}</span><div><h3>${safe(r.name)}</h3><p>Palavra-chave: <b>${safe(r.keyword)}</b> â€¢ ${safe(r.match)}</p></div>${badge(r.active)}<div class="mini-actions"><button data-action="edit-rule" data-id="${r.id}">Editar</button><button data-action="toggle-rule" data-id="${r.id}">${r.active?'Pausar':'Ativar'}</button></div></div><div class="rule-body"><div class="rule-step"><strong>Tipo de resposta</strong>${safe(r.responseType || 'Texto')}</div><div class="rule-step"><strong>URL / aÃ§Ã£o</strong>${safe(r.webhookUrl || r.action || 'Responder texto')}</div><div class="rule-step"><strong>Resposta ao cliente</strong>${safe(r.reply)}</div></div></div>`;
 }
@@ -529,6 +575,8 @@ function render() {
   app.innerHTML = subscriberTopBar() + (views[r] || views.dashboard)();
   const form = document.querySelector('#send-form');
   if (form) form.onsubmit = e => { e.preventDefault(); toast('Envio simulado. Configure o provedor WhatsApp para enviar de verdade.'); };
+  const leadForm = document.querySelector('#lead-settings-form');
+  if (leadForm) leadForm.onsubmit = saveLeadSettings;
 }
 
 function toast(text) {
@@ -611,6 +659,7 @@ document.querySelector('#mobile-menu').onclick = () => document.querySelector('.
 window.addEventListener('hashchange', render);
 window.addEventListener('autozap-authenticated', event => { if (!event.detail?.demo) syncRemote(); });
 render();
+
 
 
 

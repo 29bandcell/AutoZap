@@ -1,4 +1,4 @@
-﻿import type { Config } from "@netlify/functions";
+import type { Config } from "@netlify/functions";
 import { json } from "./_shared/http.ts";
 import { authError, requireTenantUser } from "./_shared/auth.ts";
 import { supabase, supabaseCount } from "./_shared/supabase.ts";
@@ -16,7 +16,7 @@ export default async (req: Request) => {
     if (req.method !== "GET") return json({ error: "Método não permitido" }, 405);
     const { user, profile } = await requireTenantUser(req);
     const tenantId = profile.tenant_id;
-    const [tenant] = await supabase(`tenants?id=eq.${tenantId}&select=id,name,slug,status,plan_code,trial_ends_at,max_devices,max_apps,monthly_message_limit&limit=1`);
+    const [tenant] = await supabase(`tenants?id=eq.${tenantId}&select=id,name,slug,status,plan_code,trial_ends_at,max_devices,max_apps,monthly_message_limit,lead_capture_enabled,lead_greeting_template,lead_followup_template&limit=1`);
     const [subscription] = await supabase(`tenant_subscriptions?tenant_id=eq.${tenantId}&select=id,plan_code,status,trial_started_at,trial_ends_at,current_period_started_at,current_period_ends_at,cancelled_at&limit=1`);
     const now = Date.now();
     const trialEndsAt = subscription?.trial_ends_at || tenant?.trial_ends_at;
@@ -60,3 +60,4 @@ export default async (req: Request) => {
 };
 
 export const config: Config = { path: "/api/account", method: "GET" };
+

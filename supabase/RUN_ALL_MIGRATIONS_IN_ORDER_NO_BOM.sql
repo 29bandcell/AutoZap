@@ -428,5 +428,24 @@ create policy iptv_test_packages_tenant_all on public.iptv_test_packages
 revoke all on public.tenant_subscriptions, public.iptv_integrations, public.iptv_test_packages from anon;
 grant select on public.tenant_subscriptions to authenticated;
 grant select, insert, update, delete on public.iptv_integrations, public.iptv_test_packages to authenticated;
+-- Lead capture / pré-atendimento do teste IPTV
+alter table public.tenants
+  add column if not exists lead_capture_enabled boolean not null default true,
+  add column if not exists lead_greeting_template text not null default 'Olá, que bom te ter aqui!
 
+Sou {{company_name}}. 🙍‍♂️
 
+🔸Em qual aparelho irá testar?
+
+Aguardo sua resposta 🤓
+
+1 - TV Box
+2 - Celular
+3 - Chromecast
+4 - Computador
+5 - Smart TV
+6 - Amazon Fire Stick',
+  add column if not exists lead_followup_template text not null default 'Digite ''{{keyword}}'' para receber um teste gratuito.';
+
+alter table public.contacts
+  add column if not exists metadata jsonb not null default '{}'::jsonb;

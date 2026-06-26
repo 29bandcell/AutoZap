@@ -3,6 +3,22 @@ import { json, requiredEnv } from "./_shared/http.ts";
 import { supabase } from "./_shared/supabase.ts";
 import { constantTimeEqual } from "./_shared/secrets.ts";
 
+const DEFAULT_GREETING = `Olá, que bom te ter aqui!
+
+Sou {{company_name}}. 🙍‍♂️
+
+🔸Em qual aparelho irá testar?
+
+Aguardo sua resposta 🤓
+
+1 - TV Box
+2 - Celular
+3 - Chromecast
+4 - Computador
+5 - Smart TV
+6 - Amazon Fire Stick`;
+const DEFAULT_FOLLOWUP = `Digite '{{keyword}}' para receber um teste gratuito.`;
+
 const normalizeText = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 const extractText = (data: any) => data?.message?.conversation || data?.message?.extendedTextMessage?.text || data?.message?.imageMessage?.caption || data?.message?.videoMessage?.caption || "";
 const firstName = (value: unknown) => String(value || "cliente").trim().split(/\s+/)[0] || "cliente";
@@ -56,6 +72,49 @@ async function send(instance: string, number: string, text: string) {
   if (!response.ok) throw new Error(`Evolution respondeu ${response.status}`);
   return response.json();
 }
+async function logOutbound(device: any, messageId: string, phone: string, message: string, providerResponse: Record<string, unknown> = {}) {
+  await supabase("message_events", { method: "POST", body: JSON.stringify({ tenant_id: device.tenant_id, device_id: device.id, dedupe_key: `reply:${device.id}:${messageId}`, external_request_id: `reply:${messageId}`, phone, message, direction: "outbound", status: "sent", provider_response: providerResponse, sent_at: new Date().toISOString() }) });
+}
+async function upsertContact(device: any, phone: string, data: any, metadata?: Record<string, unknown>, optedOutAt?: string | null) {
+  const payload: Record<string, unknown> = { tenant_id: device.tenant_id, device_id: device.id, phone, display_name: String(data.pushName || "").slice(0, 120) || null, last_interaction_at: new Date().toISOString() };
+  if (metadata) payload.metadata = metadata;
+  if (optedOutAt !== undefined) payload.opted_out_at = optedOutAt;
+  await supabase("contacts?on_conflict=tenant_id,phone", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(payload) });
+}
+async function firstTestKeyword(tenantId: string, deviceId: string) {
+  const packages = await supabase(`iptv_test_packages?tenant_id=eq.${tenantId}&status=eq.active&select=keyword,device_id&order=created_at.desc&limit=10`);
+  const packageForDevice = (packages || []).find((item: any) => !item.device_id || item.device_id === deviceId) || packages?.[0];
+  return String(packageForDevice?.keyword || "teste iptv").trim() || "teste iptv";
+}
+async function handleLeadCapture(params: { device: any; instance: string; phone: string; text: string; messageId: string; data: any; contact: any; tenant: any }) {
+  const { device, instance, phone, text, messageId, data, contact, tenant } = params;
+  if (tenant?.lead_capture_enabled === false) return false;
+  const metadata = contact?.metadata && typeof contact.metadata === "object" ? contact.metadata : {};
+  const context = { name: firstName(data.pushName), company_name: tenant?.name || "AutoZap", inbound: { senderPhone: phone, message: text } };
+  const isNewContact = !contact?.id;
+  const stage = String(metadata.lead_capture_stage || "");
+  if (isNewContact) {
+    const reply = renderTemplate(String(tenant?.lead_greeting_template || DEFAULT_GREETING), context);
+    await upsertContact(device, phone, data, { ...metadata, lead_capture_stage: "awaiting_device", lead_capture_started_at: new Date().toISOString(), lead_capture_last_prompt_at: new Date().toISOString() });
+    const result = await send(instance, phone, reply);
+    await logOutbound(device, `lead-greeting:${messageId}`, phone, reply, { whatsapp: result, lead_capture: "greeting" });
+    return true;
+  }
+  if (stage === "awaiting_device") {
+    const reply = /^\d{1,2}$/.test(text.trim())
+      ? renderTemplate(String(tenant?.lead_followup_template || DEFAULT_FOLLOWUP), { ...context, keyword: await firstTestKeyword(device.tenant_id, device.id), device_option: text.trim() })
+      : renderTemplate(String(tenant?.lead_greeting_template || DEFAULT_GREETING), context);
+    const nextMetadata = /^\d{1,2}$/.test(text.trim())
+      ? { ...metadata, lead_capture_stage: "awaiting_keyword", lead_device_option: text.trim(), lead_capture_updated_at: new Date().toISOString() }
+      : { ...metadata, lead_capture_last_prompt_at: new Date().toISOString() };
+    await upsertContact(device, phone, data, nextMetadata);
+    const result = await send(instance, phone, reply);
+    await logOutbound(device, `lead-step:${messageId}`, phone, reply, { whatsapp: result, lead_capture: nextMetadata.lead_capture_stage || "awaiting_device" });
+    return true;
+  }
+  return false;
+}
+
 export default async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Método não permitido" }, 405);
   const expected = requiredEnv("EVOLUTION_WEBHOOK_SECRET");
@@ -91,14 +150,15 @@ export default async (req: Request) => {
     const normalized = normalizeText(text);
     const optedOut = stopWords.includes(normalized);
     const optedIn = startWords.includes(normalized);
-    const currentContacts = await supabase(`contacts?tenant_id=eq.${device.tenant_id}&phone=eq.${phone}&select=id,opted_out_at&limit=1`);
-    const contactPayload: Record<string, unknown> = { tenant_id: device.tenant_id, device_id: device.id, phone, display_name: String(data.pushName || "").slice(0, 120) || null, last_interaction_at: new Date().toISOString() };
-    if (optedOut) contactPayload.opted_out_at = new Date().toISOString();
-    if (optedIn) contactPayload.opted_out_at = null;
-    await supabase("contacts?on_conflict=tenant_id,phone", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(contactPayload) });
-    if (optedOut) { await send(instance, phone, "Você não receberá mais mensagens automáticas. Para voltar, envie VOLTAR."); return new Response(null, { status: 204 }); }
-    if (optedIn) { await send(instance, phone, "Mensagens automáticas reativadas com sucesso."); return new Response(null, { status: 204 }); }
-    if (currentContacts?.[0]?.opted_out_at) return new Response(null, { status: 204 });
+    const currentContacts = await supabase(`contacts?tenant_id=eq.${device.tenant_id}&phone=eq.${phone}&select=id,opted_out_at,metadata&limit=1`);
+    const contact = currentContacts?.[0] || null;
+    if (optedOut) { await upsertContact(device, phone, data, contact?.metadata || {}, new Date().toISOString()); await send(instance, phone, "Você não receberá mais mensagens automáticas. Para voltar, envie VOLTAR."); return new Response(null, { status: 204 }); }
+    if (optedIn) { await upsertContact(device, phone, data, { ...(contact?.metadata || {}), lead_capture_stage: "awaiting_keyword" }, null); await send(instance, phone, "Mensagens automáticas reativadas com sucesso."); return new Response(null, { status: 204 }); }
+    if (contact?.opted_out_at) return new Response(null, { status: 204 });
+    const tenants = await supabase(`tenants?id=eq.${device.tenant_id}&select=name,lead_capture_enabled,lead_greeting_template,lead_followup_template&limit=1`);
+    const handledLeadCapture = await handleLeadCapture({ device, instance, phone, text, messageId, data, contact, tenant: tenants?.[0] || {} });
+    if (handledLeadCapture) return new Response(null, { status: 204 });
+    await upsertContact(device, phone, data, contact?.metadata || {});
     const rules = await supabase(`automation_rules?device_id=eq.${device.id}&enabled=eq.true&select=id,name,keyword,match_type,action,reply_template&order=priority.asc`);
     const rule = (rules || []).find((candidate: any) => matches(candidate, text));
     if (!rule) return new Response(null, { status: 204 });
@@ -126,7 +186,7 @@ export default async (req: Request) => {
     }
     if (!reply.trim()) return new Response(null, { status: 204 });
     const result = await send(instance, phone, reply);
-    await supabase("message_events", { method: "POST", body: JSON.stringify({ tenant_id: device.tenant_id, device_id: device.id, dedupe_key: `reply:${device.id}:${messageId}`, external_request_id: `reply:${messageId}`, phone, message: reply, direction: "outbound", status: "sent", provider_response: { whatsapp: result, webhook: providerResponse }, sent_at: new Date().toISOString() }) });
+    await logOutbound(device, messageId, phone, reply, { whatsapp: result, webhook: providerResponse });
     return new Response(null, { status: 204 });
   } catch (error) {
     console.error("Evolution webhook error", error);
