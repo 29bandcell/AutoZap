@@ -186,7 +186,8 @@ function testChatbotView() {
 
 function devicesView() {
   const devices = state.devices || [];
-  return `<div class="section-head"><div><h2>Dispositivos</h2><p>Cada dispositivo representa uma sessÃ£o WhatsApp isolada.</p></div><button class="btn primary" data-action="new-device">+ Criar dispositivo</button></div><div class="stats">${stat('Dispositivos',String(devices.length),window.autoZapAuth?.mode==='production'?'Limite conforme seu plano':'Modo demonstraÃ§Ã£o','â–£')}${stat('Conectados',String(devices.filter(d=>['open','connected'].includes(d.status)).length),'SessÃµes online','âœ“','blue')}${stat('Mensagens hoje','18','Processadas','âž¤')}${stat('Falhas','0','Ãšltimas 24 horas','!','warn')}</div>${devices.length?`<div class="device-detail-grid">${devices.map(d=>`<article class="card device-main-card"><div class="connection"><span class="device-photo">WA</span><div><h3>${safe(d.name)}</h3><p>${safe(d.phone||d.instance_name||'Aguardando conexÃ£o')}</p></div>${badge(d.status==='open'||d.status==='connected')}</div><div class="device-message-stats"><div><strong>18</strong><small>Hoje</small></div><div><strong>54</strong><small>7 dias</small></div><div><strong>126</strong><small>30 dias</small></div><div><strong>394</strong><small>Total</small></div></div><div class="device-actions"><button class="btn primary" data-action="restart-device">â†» Reiniciar</button><a class="btn primary" href="#diagnosticos">â“˜ DiagnÃ³sticos</a><button class="btn primary" data-action="device-settings">âš™ ConfiguraÃ§Ãµes</button></div></article>`).join('')}<article class="card"><div class="card-head"><h2>SaÃºde das sessÃµes</h2></div><div class="health-stack">${devices.map(d=>`<div><span>${safe(d.name)}</span>${badge(d.status==='open'||d.status==='connected')}</div>`).join('')}</div><div class="call-note"><strong>SeguranÃ§a</strong><p>Cada cliente vÃª apenas as instÃ¢ncias pertencentes Ã  prÃ³pria empresa.</p></div></article></div>`:`<article class="card">${empty('â–£','Nenhum dispositivo','Crie o primeiro dispositivo e leia o QR Code no WhatsApp.','<button class="btn primary" data-action="new-device">Criar dispositivo</button>')}</article>`}`;
+  const connected = devices.filter(d => ['open','connected'].includes(String(d.status).toLowerCase())).length;
+  return `<div class="section-head"><div><h2>Dispositivos</h2><p>Cada dispositivo representa uma sessão WhatsApp isolada.</p></div><button class="btn primary" data-action="new-device">+ Criar dispositivo</button></div><div class="stats">${stat('Dispositivos',String(devices.length),window.autoZapAuth?.mode==='production'?'Limite conforme seu plano':'Modo demonstração','WA')}${stat('Conectados',String(connected),'Sessões online','OK','blue')}${stat('Mensagens hoje','18','Processadas','EN')}${stat('Falhas','0','Últimas 24 horas','!','warn')}</div>${devices.length?`<div class="device-detail-grid">${devices.map(d=>`<article class="card device-main-card"><div class="connection"><span class="device-photo">WA</span><div><h3>${safe(d.name)}</h3><p>${safe(d.phone||d.instance_name||'Aguardando conexão')}</p></div>${badge(['open','connected'].includes(String(d.status).toLowerCase()))}</div><div class="device-message-stats"><div><strong>18</strong><small>Hoje</small></div><div><strong>54</strong><small>7 dias</small></div><div><strong>126</strong><small>30 dias</small></div><div><strong>394</strong><small>Total</small></div></div><div class="device-actions"><button class="btn primary" data-action="show-device-qr" data-id="${d.id}">Gerar QR</button><a class="btn primary" href="#diagnosticos">Diagnósticos</a><button class="btn danger" data-action="delete-device" data-id="${d.id}">Excluir</button></div><div class="call-note"><strong>Precisa conectar de novo?</strong><p>Use “Gerar QR” para abrir um novo QR Code desta mesma instância. Se quiser começar do zero, clique em “Excluir” e crie outro dispositivo.</p></div></article>`).join('')}<article class="card"><div class="card-head"><h2>Saúde das sessões</h2></div><div class="health-stack">${devices.map(d=>`<div><span>${safe(d.name)}</span>${badge(['open','connected'].includes(String(d.status).toLowerCase()))}</div>`).join('')}</div><div class="call-note"><strong>Segurança</strong><p>Cada cliente vê apenas as instâncias pertencentes à própria empresa.</p></div></article></div>`:`<article class="card">${empty('WA','Nenhum dispositivo','Crie o primeiro dispositivo e leia o QR Code no WhatsApp.','<button class="btn primary" data-action="new-device">Criar dispositivo</button>')}</article>`}`;
 }
 
 function appsView() {
@@ -354,6 +355,39 @@ async function createApp(e) {
   }
 }
 
+async function openExistingQrModal(id) {
+  const device = (state.devices || []).find(d => d.id === id);
+  modalContent.innerHTML = `<h2>Gerar QR Code</h2><p class="subtitle">Vamos pedir um novo QR Code para esta instância existente.</p><div id="device-result"><p class="subtitle">Solicitando QR Code à Evolution API...</p></div><div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancelar</button></div>`;
+  modal.hidden = false;
+  const result = document.querySelector('#device-result');
+  try {
+    const response = await window.apiFetch(`/api/devices/${encodeURIComponent(id)}`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Não foi possível gerar QR Code');
+    const qr = data.qrCode ? (data.qrCode.startsWith('data:') ? data.qrCode : `data:image/png;base64,${data.qrCode}`) : '';
+    result.innerHTML = `<div class="qr-result"><strong>Instância: ${safe(data.instanceName || device?.instance_name || device?.name || '')}</strong>${qr?`<img src="${qr}" alt="QR Code do WhatsApp"><p>WhatsApp → Aparelhos conectados → Conectar aparelho</p>`:'<p>A Evolution não devolveu um QR Code para esta instância.</p>'}<span class="badge pending" id="connection-state">Aguardando leitura</span></div>`;
+    if (qr) watchConnection(id);
+  } catch (error) {
+    result.innerHTML = `<div class="call-note"><strong>Não foi possível gerar o QR</strong><p>${safe(error.message)}</p></div>`;
+  }
+}
+
+async function deleteDevice(id) {
+  const device = (state.devices || []).find(d => d.id === id);
+  if (!confirm(`Excluir o dispositivo "${device?.name || 'selecionado'}"? Depois você poderá criar outro QR Code do zero.`)) return;
+  try {
+    const response = await window.apiFetch(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Não foi possível excluir o dispositivo');
+    state.devices = (state.devices || []).filter(d => d.id !== id);
+    save();
+    render();
+    toast('Dispositivo excluído. Agora você pode criar outro.');
+  } catch (error) {
+    toast(error instanceof Error ? error.message : 'Falha ao excluir dispositivo.');
+  }
+}
+
 function openDeviceModal() {
   modalContent.innerHTML = `<h2>Criar dispositivo</h2><p class="subtitle">Crie uma instÃ¢ncia na Evolution API e conecte o WhatsApp pelo QR Code.</p><form id="device-form"><div class="field"><label>Nome do dispositivo</label><input class="input" name="name" required minlength="3" placeholder="Ex.: atendimento-principal"></div><div class="field" style="margin-top:12px"><label>Tipo de conexÃ£o</label><select class="select" disabled><option>Evolution API â€¢ WhatsApp QR Code</option></select></div><div id="device-result" style="margin-top:16px"></div><div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancelar</button><button class="btn primary" id="create-device-submit">Criar e gerar QR Code</button></div></form>`;
   modal.hidden = false;
@@ -441,6 +475,8 @@ document.addEventListener('click', async e => {
   if (a === 'close-modal') modal.hidden = true;
   if (a === 'simulate') toast('Simulado: palavra-chave encontrada, URL chamada e resposta enviada.');
   if (a === 'new-device') openDeviceModal();
+  if (a === 'show-device-qr') openExistingQrModal(b.dataset.id);
+  if (a === 'delete-device') deleteDevice(b.dataset.id);
   if (a === 'new-template') toast('Editor de templates serÃ¡ conectado ao banco.');
   if (a === 'edit-provider') openProviderModal();
   if (a === 'new-package') openPackageModal();

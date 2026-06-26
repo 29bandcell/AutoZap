@@ -87,6 +87,13 @@ export default async (req: Request, context: Context) => {
       await supabase(`devices?id=eq.${devices[0].id}`, { method: "PATCH", body: JSON.stringify({ status: state === "open" ? "open" : state === "close" ? "close" : "connecting", last_seen_at: new Date().toISOString() }) });
       return json({ ok: true, state });
     }
+    if (req.method === "POST" && id) {
+      const devices = await supabase(`devices?id=eq.${encodeURIComponent(id)}&tenant_id=eq.${tenantId}&select=id,instance_name&limit=1`);
+      if (!devices?.length) return json({ error: "Dispositivo não encontrado" }, 404);
+      const qrCode = await getQrCode(devices[0].instance_name, null);
+      await supabase(`devices?id=eq.${devices[0].id}`, { method: "PATCH", body: JSON.stringify({ status: "connecting", last_seen_at: new Date().toISOString() }) });
+      return json({ ok: true, id: devices[0].id, instanceName: devices[0].instance_name, qrCode });
+    }
     if (req.method === "DELETE" && id) {
       const devices = await supabase(`devices?id=eq.${encodeURIComponent(id)}&tenant_id=eq.${tenantId}&select=id,instance_name&limit=1`);
       if (!devices?.length) return json({ error: "Dispositivo não encontrado" }, 404);
