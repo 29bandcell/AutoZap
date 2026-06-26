@@ -16,6 +16,7 @@ export default async (req: Request) => {
     return json({
       data: {
         tenant,
+        profile: { id: profile.id, full_name: profile.full_name, role: profile.role },
         subscription,
         access: {
           allowed: ["trial", "active"].includes(String(subscription?.status || tenant?.status || "")) && (!trialEndsAt || trialMsLeft > 0 || String(subscription?.status || tenant?.status) === "active"),
@@ -32,3 +33,5 @@ export default async (req: Request) => {
 };
 
 export const config: Config = { path: "/api/account", method: "GET" };
+
+
