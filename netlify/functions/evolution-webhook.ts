@@ -86,6 +86,67 @@ async function upsertContact(device: any, phone: string, data: any, metadata?: R
   if (optedOutAt !== undefined) payload.opted_out_at = optedOutAt;
   await supabase("contacts?on_conflict=tenant_id,phone", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(payload) });
 }
+const parseDateTime = (value: unknown) => {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const direct = Date.parse(raw);
+  if (Number.isFinite(direct)) return direct;
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!br) return null;
+  const [, day, month, year, hour = "0", minute = "0", second = "0"] = br;
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const pickRenewalSource = (payload: any) => payload?.data && typeof payload.data === "object" ? payload.data : (payload && typeof payload === "object" ? payload : {});
+function renewalInfo(providerResponse: unknown, fallbackReply = "") {
+  const source: any = pickRenewalSource(providerResponse);
+  const expiresRaw = source.expires_at_tz || source.expires_at || source.expiresAt || source.expiration || source.vencimento || source.due_at;
+  const expiresMs = parseDateTime(expiresRaw);
+  const username = String(source.username || source.user || source.login || source.iptv_username || "").trim();
+  const password = String(source.password || source.pass || source.iptv_password || "").trim();
+  const plan = String(source.package || source.plan || source.plan_name || "").trim();
+  const renewUrl = String(source.renew_url || source.checkout_url || source.payment_url || source.paymentLink || "").trim();
+  const template = String(source.customer_renew_template || source.renew_template || source.renewal_message || "").trim();
+  const customerId = String(source.id || source.customer_id || source.client_id || source.iptv_external_id || "").trim();
+  const fallback = expiresMs || renewUrl || username ? [
+    "Olá! Seu teste IPTV " + (expiresMs && expiresMs <= Date.now() ? "venceu" : "está perto de vencer") + ".",
+    username ? "\nUsuário: " + username : "",
+    password ? "\nSenha: " + password : "",
+    plan ? "\nPlano: " + plan : "",
+    renewUrl ? "\n\nPara renovar, acesse:\n" + renewUrl : "",
+    "\n\nSe quiser renovar, fale com nosso atendimento."
+  ].join("") : "";
+  return { source, expiresRaw, expiresMs, username, password, plan, renewUrl, template, customerId, message: template || fallback || fallbackReply };
+}
+async function scheduleRenewalReminder(params: { device: any; phone: string; data: any; contact: any; providerResponse: unknown; reply: string; messageId: string }) {
+  const { device, phone, data, contact, providerResponse, reply, messageId } = params;
+  const info = renewalInfo(providerResponse, "");
+  if (!info.message.trim() || (!info.expiresMs && !info.renewUrl && !info.template && !info.username)) return;
+  const metadata = contact?.metadata && typeof contact.metadata === "object" ? contact.metadata : {};
+  await upsertContact(device, phone, data, {
+    ...metadata,
+    iptv_last_test: {
+      customer_id: info.customerId || null,
+      username: info.username || null,
+      password: info.password || null,
+      plan: info.plan || null,
+      renew_url: info.renewUrl || null,
+      expires_at: info.expiresRaw || null,
+      reminder_message: info.message,
+      provider_response_saved_at: new Date().toISOString()
+    }
+  });
+  const scheduledMs = info.expiresMs && info.expiresMs > Date.now() ? info.expiresMs : Date.now() + 60_000;
+  const scheduledFor = new Date(scheduledMs).toISOString();
+  const keyParts = ["renewal", device.id, phone, info.customerId || info.username || messageId, info.expiresMs || "now"];
+  const idempotencyKey = keyParts.join(":").replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 180);
+  try {
+    await supabase("scheduled_messages", { method: "POST", body: JSON.stringify({ tenant_id: device.tenant_id, device_id: device.id, contact_id: contact?.id || null, phone, message: info.message, scheduled_for: scheduledFor, idempotency_key: idempotencyKey }) });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (!msg.includes("409") && !msg.toLowerCase().includes("duplicate")) throw error;
+  }
+}
 async function firstTestKeyword(tenantId: string, deviceId: string) {
   const packages = await supabase(`iptv_test_packages?tenant_id=eq.${tenantId}&status=eq.active&select=keyword,device_id&order=created_at.desc&limit=10`);
   const packageForDevice = (packages || []).find((item: any) => !item.device_id || item.device_id === deviceId) || packages?.[0];
@@ -195,6 +256,7 @@ export default async (req: Request) => {
     if (!reply.trim()) return new Response(null, { status: 204 });
     const result = await send(instance, phone, reply);
     await logOutbound(device, messageId, phone, reply, { whatsapp: result, webhook: providerResponse });
+    if (providerResponse) await scheduleRenewalReminder({ device, phone, data, contact, providerResponse, reply, messageId });
     return new Response(null, { status: 204 });
   } catch (error) {
     console.error("Evolution webhook error", error);

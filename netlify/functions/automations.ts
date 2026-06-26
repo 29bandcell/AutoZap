@@ -1,4 +1,4 @@
-﻿import type { Config } from "@netlify/functions";
+import type { Config } from "@netlify/functions";
 import { requiredEnv } from "./_shared/http.ts";
 import { supabase } from "./_shared/supabase.ts";
 
@@ -13,7 +13,7 @@ export default async () => {
       if (blocked?.length) throw new Error("Contato não autorizou novas mensagens");
       const [device] = await supabase(`devices?id=eq.${item.device_id}&tenant_id=eq.${item.tenant_id}&select=id,instance_name&limit=1`);
       if (!device) throw new Error("Dispositivo indisponível");
-      [event] = await supabase("message_events", { method: "POST", body: JSON.stringify({ tenant_id: item.tenant_id, device_id: device.id, dedupe_key: `scheduled:${item.idempotency_key}`, external_request_id: item.idempotency_key, phone: item.phone, message: item.message, status: "processing" }) });
+      [event] = await supabase("message_events", { method: "POST", body: JSON.stringify({ tenant_id: item.tenant_id, device_id: device.id, dedupe_key: `scheduled:${item.idempotency_key}`, external_request_id: item.idempotency_key, phone: item.phone, message: item.message, direction: "outbound", status: "processing" }) });
       const response = await fetch(`${requiredEnv("EVOLUTION_API_URL").replace(/\/$/, "")}/message/sendText/${encodeURIComponent(device.instance_name)}`, { method: "POST", headers: { apikey: requiredEnv("EVOLUTION_API_KEY"), "content-type": "application/json" }, body: JSON.stringify({ number: item.phone.replace(/\D/g, ""), text: item.message }) });
       const responseText = await response.text();
       if (!response.ok) throw new Error(`Evolution respondeu ${response.status}`);
