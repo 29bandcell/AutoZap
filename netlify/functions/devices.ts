@@ -60,6 +60,25 @@ async function getQrCode(instanceName: string, created: any) {
   throw new Error("A Evolution respondeu ao /instance/connect, mas não devolveu QR Code. Exclua este dispositivo pendente e crie outro para gerar um QR novo.");
 }
 
+async function tryDeleteEvolutionInstance(instanceName: string) {
+  const encoded = encodeURIComponent(instanceName);
+  const attempts: Array<[string, RequestInit]> = [
+    [`/instance/delete/${encoded}`, { method: "DELETE" }],
+    [`/instance/logout/${encoded}`, { method: "DELETE" }],
+    [`/instance/logout/${encoded}`, { method: "POST" }]
+  ];
+  const errors: string[] = [];
+  for (const [path, init] of attempts) {
+    try {
+      await evolution(path, init);
+      return { ok: true, warning: null };
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  return { ok: false, warning: errors[0] || "Evolution não confirmou a exclusão da instância" };
+}
+
 const safeName = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 32);
 
 export default async (req: Request, context: Context) => {
@@ -88,9 +107,9 @@ export default async (req: Request, context: Context) => {
     if (req.method === "DELETE" && id) {
       const devices = await supabase(`devices?id=eq.${encodeURIComponent(id)}&tenant_id=eq.${tenantId}&select=id,instance_name&limit=1`);
       if (!devices?.length) return json({ error: "Dispositivo não encontrado" }, 404);
-      await evolution(`/instance/delete/${encodeURIComponent(devices[0].instance_name)}`, { method: "DELETE" });
+      const evolutionDelete = await tryDeleteEvolutionInstance(devices[0].instance_name);
       await supabase(`devices?id=eq.${devices[0].id}`, { method: "DELETE" });
-      return json({ ok: true });
+      return json({ ok: true, warning: evolutionDelete.warning });
     }
     if (req.method !== "POST") return json({ error: "Método não permitido" }, 405);
     const body = await req.json();

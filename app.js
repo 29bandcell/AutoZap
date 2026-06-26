@@ -83,7 +83,7 @@ function loadState() {
 let state = loadState();
 const save = () => localStorage.setItem('autozap-state', JSON.stringify(state));
 const route = () => location.hash.slice(1) || 'dashboard';
-const statusText = s => s === true ? 'Ativa' : s === 'connected' ? 'Conectado' : s === 'open' ? 'Conectado' : s;
+const statusText = s => s === true ? 'Ativa' : s === false ? 'Pendente' : s === 'connected' ? 'Conectado' : s === 'open' ? 'Conectado' : s;
 const badge = s => `<span class="badge ${s === 'Enviado' || s === 'connected' || s === 'open' || s === true || s === 'Ativo' ? 'active' : 'pending'}">${statusText(s)}</span>`;
 const stat = (label, value, meta, icon, kind = '') => `<article class="stat ${kind}"><small>${label}</small><strong>${value}</strong><span>${meta}</span><div class="stat-icon">${icon}</div></article>`;
 const empty = (icon, h, p, button = '') => `<div class="empty"><div class="empty-icon">${icon}</div><h3>${h}</h3><p>${p}</p>${button}</div>`;
@@ -382,7 +382,7 @@ async function deleteDevice(id) {
     state.devices = (state.devices || []).filter(d => d.id !== id);
     save();
     render();
-    toast('Dispositivo excluído. Agora você pode criar outro.');
+    toast(data.warning ? 'Dispositivo removido do AutoZap. A Evolution não confirmou apagar a instância antiga.' : 'Dispositivo excluído. Agora você pode criar outro.');
   } catch (error) {
     toast(error instanceof Error ? error.message : 'Falha ao excluir dispositivo.');
   }
