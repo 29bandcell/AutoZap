@@ -17,7 +17,9 @@ const titles = {
   enviar: 'Enviar mensagem',
   logs: 'Mensagens enviadas',
   integracoes: 'Apps e API',
-  diagnosticos: 'DiagnÃ³sticos'
+  diagnosticos: 'Diagnósticos',
+  planos: 'Planos e assinatura',
+  admin: 'Admin AutoZap'
 };
 
 const demoTestUrls = [
@@ -93,6 +95,9 @@ const uiStatus = value => String(value || '').toLowerCase() === 'paused' ? 'Paus
 const apiStatus = value => String(value || '').toLowerCase().startsWith('paus') ? 'paused' : 'active';
 const packageFromApi = item => ({ id: item.id, integrationId: item.integration_id, deviceId: item.device_id, packageName: item.package_name, keyword: item.keyword, method: item.method || 'POST', url: item.url, status: uiStatus(item.status) });
 const providerFromApi = item => item ? ({ id: item.id, mode: item.mode || 'links', name: item.name || '', apiBaseUrl: item.api_base_url || '', authType: item.auth_type || 'none', notes: item.notes || '', status: item.status || 'active', maskedSecret: !!item.secret_ref }) : structuredClone(seed).iptvProvider;
+const formatDateTime = value => value ? new Date(value).toLocaleString('pt-BR') : '-';
+const messageEventToLog = event => ({ id: event.id, at: formatDateTime(event.created_at || event.sent_at), from: event.phone || '-', keyword: event.direction === 'inbound' ? event.message : 'resposta enviada', rule: event.direction === 'inbound' ? 'Mensagem recebida' : 'Resposta do AutoZap', result: event.status === 'sent' ? 'Enviado' : event.status === 'failed' ? 'Falhou' : 'Processando', direction: event.direction || 'outbound', error: event.error_message || '', message: event.message || '' });
+const usageText = (used, limit) => limit ? String(used || 0) + ' / ' + String(limit) : String(used || 0);
 function applyIptvRemote(payload) {
   if (!payload) return;
   state.iptvProvider = providerFromApi(payload.integration);
@@ -142,13 +147,51 @@ const views = {
   grupos: () => `<div class="section-head"><div><h2>Grupos de contatos</h2><p>Organize contatos para campanhas e comunicados.</p></div><button class="btn primary">+ Criar grupo</button></div><article class="card">${empty('â™§','Nenhum grupo criado','Crie um grupo para organizar seus contatos.')}</article>`,
   agendamentos: () => `<div class="section-head"><div><h2>Mensagens agendadas</h2><p>Lembretes e campanhas que serÃ£o enviados no horÃ¡rio definido.</p></div><button class="btn primary" data-action="schedule">+ Criar agendamento</button></div><div class="stats">${stat('Agendamentos',state.scheduled.length,'Total','â—·')}${stat('Pendentes',state.scheduled.length,'Aguardando envio','â—´','warn')}${stat('Executados','0','Hoje','âœ“','blue')}${stat('Falhas','0','Hoje','!','red')}</div><article class="card">${state.scheduled.length?'<p>Agendamento salvo.</p>':empty('â—·','Nenhum agendamento feito','Crie uma mensagem para uma data e horÃ¡rio especÃ­ficos.')}</article>`,
   enviar: () => `<div class="section-head"><div><h2>Enviar mensagem</h2><p>Envio manual pelo dispositivo conectado.</p></div></div><article class="card"><div class="compose-grid"><div class="compose-tabs"><button class="active">Texto</button><button>MÃ­dia</button><button>Template</button></div><form id="send-form"><div class="form-grid"><div class="field"><label>Dispositivo</label><select class="select"><option>WhatsApp principal</option></select></div><div class="field"><label>NÃºmero com DDD</label><input class="input" required placeholder="5511999999999"></div><div class="field full"><label>Mensagem</label><textarea rows="9" required placeholder="Digite a mensagem"></textarea></div></div><div class="modal-actions"><button class="btn primary">Enviar mensagem</button></div></form></div></article>`,
-  logs: () => `<div class="section-head"><div><h2>Mensagens enviadas</h2><p>Auditoria das regras, chamadas de API e respostas.</p></div><button class="btn ghost">Exportar</button></div><div class="stats">${stat('Mensagens','18','Hoje','âž¤')}${stat('AutomÃ¡ticas','11','Por chatbot','â™Ÿ','blue')}${stat('Manuais','7','Pelo painel','âœ¦')}${stat('Falhas','0','Hoje','âœ“','warn')}</div><article class="card table-wrap"><table class="table"><thead><tr><th>Data</th><th>Contato</th><th>Entrada</th><th>Regra executada</th><th>Status</th></tr></thead><tbody>${state.logs.map(l=>`<tr><td>${safe(l.at)}</td><td>${safe(l.from)}</td><td>${safe(l.keyword)}</td><td>${safe(l.rule)}</td><td>${badge(l.result)}</td></tr>`).join('')}</tbody></table></article>`,
+  logs: () => logsView(),
   integracoes: () => appsView(),
+  planos: () => plansView(),
+  admin: () => adminView(),
   diagnosticos: () => `<div class="section-head"><div><h2>DiagnÃ³sticos</h2><p>SaÃºde das conexÃµes e Ãºltimas execuÃ§Ãµes.</p></div><button class="btn primary" data-action="diagnose">Atualizar</button></div><article class="card"><div class="health"><div class="health-item"><strong>WhatsApp</strong>${badge('connected')}<br><span>LatÃªncia: 84 ms</span></div><div class="health-item"><strong>Motor de regras</strong>${badge('connected')}<br><span>Fila: 0 eventos</span></div><div class="health-item"><strong>API IPTV</strong><span class="badge pending">Pendente</span><br><span>Falta validar a chamada real do provedor.</span></div></div></article><article class="card" style="margin-top:18px"><div class="card-head"><h2>Ãšltimo teste</h2></div><pre class="code">WhatsApp .............. OK
 Palavra-chave .......... OK
 Webhook de teste ....... MODELO
 Resposta WhatsApp ...... SIMULADA</pre></article>`
 };
+
+
+function logsView() {
+  const summary = state.logSummary || {};
+  const logs = state.logs || [];
+  const sent = logs.filter(l => l.result === 'Enviado').length;
+  const failed = logs.filter(l => l.result === 'Falhou').length;
+  const rows = logs.length ? logs.map(l => '<tr><td>' + safe(l.at) + '</td><td>' + safe(l.from) + '</td><td>' + safe(l.direction) + '</td><td>' + safe(l.message || l.keyword) + '</td><td>' + badge(l.result) + '</td><td>' + safe(l.error || '-') + '</td></tr>').join('') : '<tr><td colspan="6">Nenhum log real ainda. Assim que o WhatsApp receber/enviar mensagens, aparece aqui.</td></tr>';
+  return '<div class="section-head"><div><h2>Mensagens enviadas</h2><p>Auditoria real das mensagens recebidas, respostas e falhas.</p></div><button class="btn ghost" data-action="refresh-remote">Atualizar</button></div><div class="stats">' + stat('Eventos hoje', String(summary.todayTotal ?? logs.length), 'Recebidos/enviados', 'EN') + stat('Enviadas no mês', String(summary.monthOutbound ?? sent), 'Conta no limite do plano', 'WA', 'blue') + stat('Falhas no mês', String(summary.monthFailed ?? failed), 'Para corrigir URL/API', '!', 'warn') + stat('Últimos logs', String(logs.length), 'Carregados', 'LG') + '</div><article class="card table-wrap"><table class="table"><thead><tr><th>Data</th><th>Telefone</th><th>Direção</th><th>Mensagem</th><th>Status</th><th>Erro</th></tr></thead><tbody>' + rows + '</tbody></table></article>';
+}
+
+function plansView() {
+  const account = state.account || {};
+  const tenant = account.tenant || {};
+  const subscription = account.subscription || {};
+  const usage = account.usage || {};
+  const currentPlan = String(subscription.plan_code || tenant.plan_code || 'starter').toLowerCase();
+  const status = subscription.status || tenant.status || (productionMode() ? 'trial' : 'demo');
+  const plans = [
+    { id: 'starter', name: 'Starter', price: 'R$ 49/mês', devices: 1, apps: 1, messages: 1000, fit: 'Teste grátis, operação pequena e validação.' },
+    { id: 'pro', name: 'Profissional', price: 'R$ 97/mês', devices: 3, apps: 3, messages: 5000, fit: 'Revenda com mais de um número e mais volume.' },
+    { id: 'agency', name: 'Agência', price: 'Sob consulta', devices: 10, apps: 10, messages: 25000, fit: 'Para vender AutoZap para vários clientes.' }
+  ];
+  const cards = plans.map(plan => '<article class="card"><div class="card-head"><h2>' + plan.name + '</h2>' + (plan.id === currentPlan ? badge('Ativo') : '<span class="tag">Upgrade</span>') + '</div><h3>' + plan.price + '</h3><div class="health-stack"><div><span>Dispositivos</span><strong>' + plan.devices + '</strong></div><div><span>Apps/API</span><strong>' + plan.apps + '</strong></div><div><span>Mensagens/mês</span><strong>' + plan.messages.toLocaleString('pt-BR') + '</strong></div></div><p>' + plan.fit + '</p><button class="btn ' + (plan.id === currentPlan ? 'ghost' : 'primary') + '" data-action="plan-interest" data-plan="' + plan.id + '">' + (plan.id === currentPlan ? 'Plano atual' : 'Quero esse plano') + '</button></article>').join('');
+  return '<div class="section-head"><div><h2>Planos e assinatura</h2><p>Base comercial para vender o AutoZap com teste grátis, limites e upgrades.</p></div><a class="btn primary" href="#admin">Ver clientes</a></div><div class="banner"><div><h3>Conta atual: ' + safe(currentPlan.toUpperCase()) + ' • ' + safe(status) + '</h3><p>Teste grátis restante: ' + safe(account.access?.trialDaysLeft ?? 0) + ' dia(s). Limites são aplicados por empresa/cliente.</p></div><a class="btn" href="#dispositivos">Conectar WhatsApp</a></div><div class="stats">' + stat('Dispositivos', usageText(usage.devicesUsed, usage.maxDevices), 'Limite do plano', 'WA') + stat('Apps/API', usageText(usage.appsUsed, usage.maxApps), 'Credenciais externas', 'API', 'blue') + stat('Links IPTV', String(usage.testLinksUsed || state.testLinks.length), 'URLs cadastradas', 'TV') + stat('Mensagens mês', usageText(usage.messagesUsedThisMonth, usage.messagesLimit), 'Enviadas com sucesso', 'EN', 'warn') + '</div><div class="integration-grid">' + cards + '</div><article class="card" style="margin-top:18px"><div class="card-head"><h2>Próxima etapa comercial</h2></div><p>Quando você escolher o gateway de pagamento, essa tela passa a criar assinatura, liberar teste de 3 dias e bloquear/reativar automaticamente pelo status do pagamento.</p></article>';
+}
+
+function adminView() {
+  const account = state.account || {};
+  if (!account.platformAdmin) return '<article class="card">' + empty('ADM','Acesso restrito','Esse painel aparece apenas para o dono da plataforma. Configure AUTOZAP_ADMIN_EMAILS no Netlify com seu e-mail de login.') + '</article>';
+  const payload = state.adminDashboard || {};
+  const rows = payload.data || [];
+  const active = payload.summary?.active ?? rows.filter(row => ['active','trial'].includes(String(row.subscription?.status || row.status))).length;
+  const body = rows.length ? rows.map(row => '<tr><td><strong>' + safe(row.name) + '</strong><br><small>' + safe(row.slug || row.id) + '</small></td><td>' + safe(row.subscription?.plan_code || row.plan_code || 'starter') + '</td><td>' + badge(row.subscription?.status || row.status || 'trial') + '</td><td>' + safe(row.connectedDevices || 0) + ' / ' + safe(row.max_devices || 0) + '</td><td>' + safe(row.messagesThisMonth || 0) + ' / ' + safe(row.monthly_message_limit || 0) + '</td><td>' + safe(row.failuresThisMonth || 0) + '</td></tr>').join('') : '<tr><td colspan="6">Nenhum cliente encontrado.</td></tr>';
+  return '<div class="section-head"><div><h2>Admin AutoZap</h2><p>Visão do vendedor do sistema: clientes, planos, limites e consumo.</p></div><button class="btn ghost" data-action="refresh-remote">Atualizar</button></div><div class="stats">' + stat('Clientes', String(rows.length), 'Empresas cadastradas', 'OP') + stat('Ativos/teste', String(active), 'Com acesso liberado', 'OK', 'blue') + stat('Dispositivos', String(rows.reduce((sum,row)=>sum+(row.devices||0),0)), 'WhatsApps criados', 'WA') + stat('Mensagens mês', String(rows.reduce((sum,row)=>sum+(row.messagesThisMonth||0),0)), 'Saídas enviadas', 'EN', 'warn') + '</div><article class="card table-wrap"><table class="table"><thead><tr><th>Cliente</th><th>Plano</th><th>Status</th><th>Dispositivos</th><th>Mensagens mês</th><th>Falhas</th></tr></thead><tbody>' + body + '</tbody></table></article>';
+}
 
 function chatbotView() {
   return `<div class="section-head"><div><h2>Respostas e automaÃ§Ãµes</h2><p>Cada resposta liga uma palavra-chave do WhatsApp a texto, template ou URL externa.</p></div><button class="btn primary" data-action="new-rule">+ Criar resposta</button></div><div class="stats">${stat('Respostas',state.rules.length,'Total cadastrado','â™Ÿ')}${stat('Ativas',state.rules.filter(r=>r.active).length,'Respondendo agora','âœ“','blue')}${stat('URLs/Webhooks',state.rules.filter(r=>String(r.responseType).includes('URL')||String(r.responseType).includes('Webhook')).length,'Criam teste no provedor','âš¡')}${stat('Chamadas de API','11','Hoje','âŒ')}</div><article class="card"><div class="filters"><input class="input" placeholder="Pesquisar regra ou palavra-chave"><select class="select"><option>Todos os dispositivos</option><option>WhatsApp principal</option></select></div>${state.rules.map(ruleCard).join('')}</article>`;
@@ -290,12 +333,14 @@ function updateAccountShell() {
 async function syncRemote() {
   if (window.autoZapAuth?.mode !== 'production') return;
   try {
-    const [accountResponse, devicesResponse, appsResponse, iptvResponse, rulesResponse] = await Promise.all([window.apiFetch('/api/account'), window.apiFetch('/api/devices'), window.apiFetch('/api/apps'), window.apiFetch('/api/iptv-integrations'), window.apiFetch('/api/automation-rules')]);
+    const [accountResponse, devicesResponse, appsResponse, iptvResponse, rulesResponse, logsResponse] = await Promise.all([window.apiFetch('/api/account'), window.apiFetch('/api/devices'), window.apiFetch('/api/apps'), window.apiFetch('/api/iptv-integrations'), window.apiFetch('/api/automation-rules'), window.apiFetch('/api/message-events')]);
     if (accountResponse.ok) state.account = (await accountResponse.json()).data || null;
     if (devicesResponse.ok) state.devices = (await devicesResponse.json()).data || [];
     if (appsResponse.ok) state.apps = (await appsResponse.json()).data || [];
     if (iptvResponse.ok) applyIptvRemote((await iptvResponse.json()).data);
     if (rulesResponse.ok) state.rules = (await rulesResponse.json()).data || [];
+    if (logsResponse.ok) { const payload = await logsResponse.json(); state.logSummary = payload.summary || {}; state.logs = (payload.data || []).map(messageEventToLog); }
+    if (state.account?.platformAdmin) { const adminResponse = await window.apiFetch('/api/admin/overview'); if (adminResponse.ok) state.adminDashboard = await adminResponse.json(); }
     render();
   } catch (error) {
     console.error('Falha ao sincronizar', error);
@@ -469,6 +514,13 @@ document.addEventListener('click', async e => {
   const b = e.target.closest('[data-action]');
   if (!b) return;
   const a = b.dataset.action;
+  if (a === 'refresh-remote') {
+    await syncRemote();
+    toast('Dados atualizados.');
+  }
+  if (a === 'plan-interest') {
+    toast('Plano selecionado. Próximo passo: conectar gateway de pagamento.');
+  }
   if (a === 'sign-out') { window.signOut?.(); return; }
   if (a === 'new-rule') openRule();
   if (a === 'edit-rule') openRule(state.rules.find(r => r.id === b.dataset.id));
