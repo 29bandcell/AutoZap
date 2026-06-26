@@ -67,6 +67,11 @@ async function callExternalWebhook(rule: any, payload: Record<string, unknown>) 
   if (!response.ok) throw new Error(`Webhook IPTV respondeu ${response.status}`);
   return body;
 }
+function extractConnectedPhone(data: any) {
+  const raw = data?.wuid || data?.phone || data?.number || data?.owner || data?.ownerJid || data?.instance?.wuid || data?.instance?.owner || data?.instance?.ownerJid || data?.instance?.profile?.id || "";
+  const phone = String(raw).split("@")[0].replace(/\D/g, "");
+  return phone.length >= 10 ? phone : null;
+}
 async function send(instance: string, number: string, text: string) {
   const response = await fetch(`${requiredEnv("EVOLUTION_API_URL").replace(/\/$/, "")}/message/sendText/${encodeURIComponent(instance)}`, { method: "POST", headers: { apikey: requiredEnv("EVOLUTION_API_KEY"), "content-type": "application/json" }, body: JSON.stringify({ number, text }) });
   if (!response.ok) throw new Error(`Evolution respondeu ${response.status}`);
@@ -130,7 +135,10 @@ export default async (req: Request) => {
     const eventName = String(body.event || "").toLowerCase();
     if (eventName.includes("connection")) {
       const state = String(body.data?.state || body.data?.status || "connecting").toLowerCase();
-      await supabase(`devices?id=eq.${device.id}`, { method: "PATCH", body: JSON.stringify({ status: state === "open" ? "open" : state === "close" ? "close" : "connecting", last_seen_at: new Date().toISOString() }) });
+      const connectedPhone = extractConnectedPhone(body.data || {});
+      const devicePatch: Record<string, unknown> = { status: state === "open" ? "open" : state === "close" ? "close" : "connecting", last_seen_at: new Date().toISOString() };
+      if (connectedPhone) devicePatch.phone = connectedPhone;
+      await supabase(`devices?id=eq.${device.id}`, { method: "PATCH", body: JSON.stringify(devicePatch) });
       return new Response(null, { status: 204 });
     }
     if (!eventName.includes("messages") && !eventName.includes("message")) return new Response(null, { status: 204 });

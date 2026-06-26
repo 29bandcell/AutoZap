@@ -7,7 +7,7 @@ const titles = {
   dashboard: 'Dashboard',
   dispositivos: 'Dispositivos',
   chatbot: 'Chatbot',
-  testes: 'Teste automÃ¡tico',
+  testes: 'Teste automático',
   paineliptv: 'Painel IPTV',
   testar: 'Testar chatbot',
   templates: 'Templates',
@@ -55,7 +55,7 @@ const seed = {
       id: 'r2',
       name: 'Consultar vencimento',
       keyword: 'vencimento',
-      match: 'ContÃ©m',
+      match: 'Contém',
       responseType: 'Texto',
       method: 'POST',
       webhookUrl: '',
@@ -65,22 +65,22 @@ const seed = {
     },
     {
       id: 'r3',
-      name: 'Solicitar renovaÃ§Ã£o',
+      name: 'Solicitar renovação',
       keyword: 'renovar',
       match: 'Frase exata',
       responseType: 'Webhook',
       method: 'POST',
       webhookUrl: '/api/iptv/renewal-request',
-      action: 'Enviar pedido de renovaÃ§Ã£o ao painel do provedor',
-      reply: 'Recebi sua solicitaÃ§Ã£o. JÃ¡ vou te enviar o link de pagamento.',
+      action: 'Enviar pedido de renovação ao painel do provedor',
+      reply: 'Recebi sua solicitação. Já vou te enviar o link de pagamento.',
       active: true
     }
   ],
   templates: [
-    { name: 'Boas-vindas', type: 'Texto', content: 'OlÃ¡! Digite teste iptv para receber um teste automÃ¡tico.' },
-    { name: 'Teste criado', type: 'API + texto', content: 'UsuÃ¡rio: {{username}} â€¢ Senha: {{password}} â€¢ Vencimento: {{expires_at}}' }
+    { name: 'Boas-vindas', type: 'Texto', content: 'Olá! Digite teste iptv para receber um teste automático.' },
+    { name: 'Teste criado', type: 'API + texto', content: 'Usuário: {{username}} • Senha: {{password}} • Vencimento: {{expires_at}}' }
   ],
-  contacts: [{ name: 'Contato de demonstraÃ§Ã£o', phone: '+55 11 99999-1111', source: 'WhatsApp', last: 'Hoje, 14:32' }],
+  contacts: [{ name: 'Contato de demonstração', phone: '+55 11 99999-1111', source: 'WhatsApp', last: 'Hoje, 14:32' }],
   logs: [
     { at: 'Hoje, 14:32', from: '+55 11 99999-1111', keyword: 'teste iptv', rule: 'Gerar teste IPTV', result: 'Enviado' },
     { at: 'Hoje, 13:18', from: '+55 21 98888-2222', keyword: 'vencimento', rule: 'Consultar vencimento', result: 'Enviado' }
@@ -117,6 +117,42 @@ const formatDateTime = value => value ? new Date(value).toLocaleString('pt-BR') 
 const messageEventToLog = event => ({ id: event.id, at: formatDateTime(event.created_at || event.sent_at), from: event.phone || '-', keyword: event.direction === 'inbound' ? event.message : 'resposta enviada', rule: event.direction === 'inbound' ? 'Mensagem recebida' : 'Resposta do AutoZap', result: event.status === 'sent' ? 'Enviado' : event.status === 'failed' ? 'Falhou' : 'Processando', direction: event.direction || 'outbound', error: event.error_message || '', message: event.message || '' });
 const usageText = (used, limit) => limit ? String(used || 0) + ' / ' + String(limit) : String(used || 0);
 const adminStatusLabel = status => ({ trial: 'Teste', active: 'Ativo', past_due: 'Vencido', suspended: 'Suspenso', cancelled: 'Cancelado' }[String(status || '').toLowerCase()] || status || 'trial');
+const connectedDevice = () => (state.devices || []).find(d => ['open','connected'].includes(String(d.status || '').toLowerCase())) || (state.devices || [])[0] || null;
+const connectedDeviceLabel = () => {
+  const device = connectedDevice();
+  if (!device) return 'Nenhum WhatsApp';
+  return device.phone || device.number || device.connected_phone || device.instance_name || 'Aguardando número';
+};
+function openOperationModal() {
+  const tenant = state.account?.tenant || {};
+  const device = connectedDevice();
+  modalContent.innerHTML = `<h2>Minha operação</h2><p class="subtitle">Edite o nome que aparece no painel e nas mensagens automáticas.</p><form id="operation-form"><div class="field"><label>Nome da empresa / operação</label><input class="input" name="name" required maxlength="120" value="${safe(tenant.name || state.account?.profile?.full_name || '')}" placeholder="Ex.: NovaIPTV.ia"></div><div class="call-note"><strong>WhatsApp conectado</strong><p>${safe(device ? connectedDeviceLabel() : 'Nenhum dispositivo conectado ainda.')}</p></div><div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancelar</button><button class="btn primary">Salvar operação</button></div></form>`;
+  modal.hidden = false;
+  document.querySelector('#operation-form').onsubmit = saveOperationSettings;
+}
+async function saveOperationSettings(e) {
+  e.preventDefault();
+  const name = String(new FormData(e.currentTarget).get('name') || '').trim();
+  if (name.length < 2) { toast('Informe um nome válido para a empresa.'); return; }
+  try {
+    if (productionMode()) {
+      const response = await window.apiFetch('/api/tenant-settings', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Falha ao salvar operação');
+      state.account = { ...(state.account || {}), tenant: { ...(state.account?.tenant || {}), ...(data.data || {}), name } };
+    } else {
+      state.account = { ...(state.account || {}), tenant: { ...(state.account?.tenant || {}), name } };
+    }
+    modal.hidden = true;
+    save();
+    updateAccountShell();
+    render();
+    toast('Nome da empresa atualizado.');
+  } catch (error) {
+    toast(error instanceof Error ? error.message : 'Falha ao salvar operação.');
+  }
+}
+
 const leadSettings = () => {
   const tenant = state.account?.tenant || {};
   return {
@@ -186,22 +222,22 @@ async function persistRuleRemote(rule) {
 }
 
 const views = {
-  dashboard: () => `<div class="banner"><div><h3>Motor de automaÃ§Ã£o ativo</h3><p>O WhatsApp recebe a palavra-chave, chama o link/API do painel IPTV e devolve o teste para o cliente.</p></div><a class="btn" href="#testes">Ver testes automÃ¡ticos</a></div><div class="stats">${stat('Dispositivos','1 / 1','WhatsApp conectado','â–£')}${stat('Respostas ativas',state.rules.filter(r=>r.active).length,'Prontas para responder','â™Ÿ','blue')}${stat('Links de teste',state.testLinks.length,'Cadastrados','âš¡')}${stat('Falhas de API','0','Ãšltimas 24 horas','âœ“','warn')}</div><article class="card" style="margin-bottom:20px"><div class="card-head"><h2>Fluxo igual ao BotBot</h2><a href="#chatbot">Configurar chatbot</a></div><div class="flow"><div class="flow-card"><div class="flow-icon">WA</div><h3>1. Cliente escreve</h3><p>Ex.: â€œteste iptvâ€ no WhatsApp conectado.</p></div><div class="flow-arrow">â†’</div><div class="flow-card"><div class="flow-icon">âš¡</div><h3>2. Chama URL</h3><p>A regra aciona o link do painel IPTV/provedor para criar o teste.</p></div><div class="flow-arrow">â†’</div><div class="flow-card"><div class="flow-icon">TV</div><h3>3. Envia resposta</h3><p>UsuÃ¡rio, senha, vencimento e links retornam no WhatsApp.</p></div></div></article><div class="grid-2"><article class="card"><div class="card-head"><h2>Mensagens processadas</h2><a>Ãšltimos 7 dias</a></div><div class="chart">${[42,55,38,72,61,87,66,91,74,83,68,94].map(v=>`<div class="bar" style="height:${v}%" data-value="${v}"></div>`).join('')}</div></article><article class="card"><div class="card-head"><h2>Ãšltimas execuÃ§Ãµes</h2><a href="#logs">Ver logs</a></div>${state.logs.map(l=>`<div class="activity-item"><span class="activity-icon">âœ“</span><div><strong>${l.rule}</strong><small>${l.from} â€¢ ${l.keyword}</small></div><time>${l.at}</time></div>`).join('')}</article></div>`,
+  dashboard: () => `<div class="banner"><div><h3>Motor de automação ativo</h3><p>O WhatsApp recebe a palavra-chave, chama o link/API do painel IPTV e devolve o teste para o cliente.</p></div><a class="btn" href="#testes">Ver testes automáticos</a></div><div class="stats">${stat('Dispositivos','1 / 1','WhatsApp conectado','â–£')}${stat('Respostas ativas',state.rules.filter(r=>r.active).length,'Prontas para responder','â™Ÿ','blue')}${stat('Links de teste',state.testLinks.length,'Cadastrados','⚡')}${stat('Falhas de API','0','Últimas 24 horas','✓','warn')}</div><article class="card" style="margin-bottom:20px"><div class="card-head"><h2>Fluxo igual ao BotBot</h2><a href="#chatbot">Configurar chatbot</a></div><div class="flow"><div class="flow-card"><div class="flow-icon">WA</div><h3>1. Cliente escreve</h3><p>Ex.: “teste iptv” no WhatsApp conectado.</p></div><div class="flow-arrow">→</div><div class="flow-card"><div class="flow-icon">⚡</div><h3>2. Chama URL</h3><p>A regra aciona o link do painel IPTV/provedor para criar o teste.</p></div><div class="flow-arrow">→</div><div class="flow-card"><div class="flow-icon">TV</div><h3>3. Envia resposta</h3><p>Usuário, senha, vencimento e links retornam no WhatsApp.</p></div></div></article><div class="grid-2"><article class="card"><div class="card-head"><h2>Mensagens processadas</h2><a>Últimos 7 dias</a></div><div class="chart">${[42,55,38,72,61,87,66,91,74,83,68,94].map(v=>`<div class="bar" style="height:${v}%" data-value="${v}"></div>`).join('')}</div></article><article class="card"><div class="card-head"><h2>Últimas execuções</h2><a href="#logs">Ver logs</a></div>${state.logs.map(l=>`<div class="activity-item"><span class="activity-icon">✓</span><div><strong>${l.rule}</strong><small>${l.from} • ${l.keyword}</small></div><time>${l.at}</time></div>`).join('')}</article></div>`,
   dispositivos: () => devicesView(),
   chatbot: () => chatbotView(),
   testes: () => testLinksView(),
   paineliptv: () => iptvPanelView(),
   testar: () => testChatbotView(),
-  templates: () => `<div class="section-head"><div><h2>Templates</h2><p>Modelos reutilizÃ¡veis para as respostas do chatbot.</p></div><button class="btn primary" data-action="new-template">+ Criar template</button></div><article class="card table-wrap"><table class="table"><thead><tr><th>Nome</th><th>Tipo</th><th>ConteÃºdo</th><th>AÃ§Ãµes</th></tr></thead><tbody>${state.templates.map(t=>`<tr><td><strong>${safe(t.name)}</strong></td><td><span class="tag">${safe(t.type)}</span></td><td>${safe(t.content)}</td><td class="row-actions"><button>Editar</button></td></tr>`).join('')}</tbody></table></article>`,
-  contatos: () => `<div class="section-head"><div><h2>Contatos</h2><p>NÃºmeros que jÃ¡ conversaram com o bot.</p></div><button class="btn primary">+ Importar contatos</button></div><article class="card table-wrap"><table class="table"><thead><tr><th>Contato</th><th>Origem</th><th>Ãšltima interaÃ§Ã£o</th><th>AÃ§Ãµes</th></tr></thead><tbody>${state.contacts.map(c=>`<tr><td><strong>${safe(c.name)}</strong><br><small>${safe(c.phone)}</small></td><td>${safe(c.source)}</td><td>${safe(c.last)}</td><td class="row-actions"><button>Mensagem</button></td></tr>`).join('')}</tbody></table></article>`,
-  grupos: () => `<div class="section-head"><div><h2>Grupos de contatos</h2><p>Organize contatos para campanhas e comunicados.</p></div><button class="btn primary">+ Criar grupo</button></div><article class="card">${empty('â™§','Nenhum grupo criado','Crie um grupo para organizar seus contatos.')}</article>`,
-  agendamentos: () => `<div class="section-head"><div><h2>Mensagens agendadas</h2><p>Lembretes e campanhas que serÃ£o enviados no horÃ¡rio definido.</p></div><button class="btn primary" data-action="schedule">+ Criar agendamento</button></div><div class="stats">${stat('Agendamentos',state.scheduled.length,'Total','â—·')}${stat('Pendentes',state.scheduled.length,'Aguardando envio','â—´','warn')}${stat('Executados','0','Hoje','âœ“','blue')}${stat('Falhas','0','Hoje','!','red')}</div><article class="card">${state.scheduled.length?'<p>Agendamento salvo.</p>':empty('â—·','Nenhum agendamento feito','Crie uma mensagem para uma data e horÃ¡rio especÃ­ficos.')}</article>`,
-  enviar: () => `<div class="section-head"><div><h2>Enviar mensagem</h2><p>Envio manual pelo dispositivo conectado.</p></div></div><article class="card"><div class="compose-grid"><div class="compose-tabs"><button class="active">Texto</button><button>MÃ­dia</button><button>Template</button></div><form id="send-form"><div class="form-grid"><div class="field"><label>Dispositivo</label><select class="select"><option>WhatsApp principal</option></select></div><div class="field"><label>NÃºmero com DDD</label><input class="input" required placeholder="5511999999999"></div><div class="field full"><label>Mensagem</label><textarea rows="9" required placeholder="Digite a mensagem"></textarea></div></div><div class="modal-actions"><button class="btn primary">Enviar mensagem</button></div></form></div></article>`,
+  templates: () => `<div class="section-head"><div><h2>Templates</h2><p>Modelos reutilizáveis para as respostas do chatbot.</p></div><button class="btn primary" data-action="new-template">+ Criar template</button></div><article class="card table-wrap"><table class="table"><thead><tr><th>Nome</th><th>Tipo</th><th>Conteúdo</th><th>Ações</th></tr></thead><tbody>${state.templates.map(t=>`<tr><td><strong>${safe(t.name)}</strong></td><td><span class="tag">${safe(t.type)}</span></td><td>${safe(t.content)}</td><td class="row-actions"><button>Editar</button></td></tr>`).join('')}</tbody></table></article>`,
+  contatos: () => `<div class="section-head"><div><h2>Contatos</h2><p>Números que já conversaram com o bot.</p></div><button class="btn primary">+ Importar contatos</button></div><article class="card table-wrap"><table class="table"><thead><tr><th>Contato</th><th>Origem</th><th>Última interação</th><th>Ações</th></tr></thead><tbody>${state.contacts.map(c=>`<tr><td><strong>${safe(c.name)}</strong><br><small>${safe(c.phone)}</small></td><td>${safe(c.source)}</td><td>${safe(c.last)}</td><td class="row-actions"><button>Mensagem</button></td></tr>`).join('')}</tbody></table></article>`,
+  grupos: () => `<div class="section-head"><div><h2>Grupos de contatos</h2><p>Organize contatos para campanhas e comunicados.</p></div><button class="btn primary">+ Criar grupo</button></div><article class="card">${empty('♧','Nenhum grupo criado','Crie um grupo para organizar seus contatos.')}</article>`,
+  agendamentos: () => `<div class="section-head"><div><h2>Mensagens agendadas</h2><p>Lembretes e campanhas que serão enviados no horário definido.</p></div><button class="btn primary" data-action="schedule">+ Criar agendamento</button></div><div class="stats">${stat('Agendamentos',state.scheduled.length,'Total','◷')}${stat('Pendentes',state.scheduled.length,'Aguardando envio','◴','warn')}${stat('Executados','0','Hoje','✓','blue')}${stat('Falhas','0','Hoje','!','red')}</div><article class="card">${state.scheduled.length?'<p>Agendamento salvo.</p>':empty('◷','Nenhum agendamento feito','Crie uma mensagem para uma data e horário específicos.')}</article>`,
+  enviar: () => `<div class="section-head"><div><h2>Enviar mensagem</h2><p>Envio manual pelo dispositivo conectado.</p></div></div><article class="card"><div class="compose-grid"><div class="compose-tabs"><button class="active">Texto</button><button>Mídia</button><button>Template</button></div><form id="send-form"><div class="form-grid"><div class="field"><label>Dispositivo</label><select class="select"><option>WhatsApp principal</option></select></div><div class="field"><label>Número com DDD</label><input class="input" required placeholder="5511999999999"></div><div class="field full"><label>Mensagem</label><textarea rows="9" required placeholder="Digite a mensagem"></textarea></div></div><div class="modal-actions"><button class="btn primary">Enviar mensagem</button></div></form></div></article>`,
   logs: () => logsView(),
   integracoes: () => appsView(),
   planos: () => plansView(),
   admin: () => adminView(),
-  diagnosticos: () => `<div class="section-head"><div><h2>DiagnÃ³sticos</h2><p>SaÃºde das conexÃµes e Ãºltimas execuÃ§Ãµes.</p></div><button class="btn primary" data-action="diagnose">Atualizar</button></div><article class="card"><div class="health"><div class="health-item"><strong>WhatsApp</strong>${badge('connected')}<br><span>LatÃªncia: 84 ms</span></div><div class="health-item"><strong>Motor de regras</strong>${badge('connected')}<br><span>Fila: 0 eventos</span></div><div class="health-item"><strong>API IPTV</strong><span class="badge pending">Pendente</span><br><span>Falta validar a chamada real do provedor.</span></div></div></article><article class="card" style="margin-top:18px"><div class="card-head"><h2>Ãšltimo teste</h2></div><pre class="code">WhatsApp .............. OK
+  diagnosticos: () => `<div class="section-head"><div><h2>Diagnósticos</h2><p>Saúde das conexões e últimas execuções.</p></div><button class="btn primary" data-action="diagnose">Atualizar</button></div><article class="card"><div class="health"><div class="health-item"><strong>WhatsApp</strong>${badge('connected')}<br><span>Latência: 84 ms</span></div><div class="health-item"><strong>Motor de regras</strong>${badge('connected')}<br><span>Fila: 0 eventos</span></div><div class="health-item"><strong>API IPTV</strong><span class="badge pending">Pendente</span><br><span>Falta validar a chamada real do provedor.</span></div></div></article><article class="card" style="margin-top:18px"><div class="card-head"><h2>Último teste</h2></div><pre class="code">WhatsApp .............. OK
 Palavra-chave .......... OK
 Webhook de teste ....... MODELO
 Resposta WhatsApp ...... SIMULADA</pre></article>`
@@ -251,7 +287,7 @@ function chatbotView() {
   return `<div class="section-head"><div><h2>Respostas e automações</h2><p>Cada resposta liga uma palavra-chave do WhatsApp a texto, template ou URL externa.</p></div><button class="btn primary" data-action="new-rule">+ Criar resposta</button></div>${leadSettingsCard()}<div class="stats">${stat('Respostas',state.rules.length,'Total cadastrado','BOT')}${stat('Ativas',state.rules.filter(r=>r.active).length,'Respondendo agora','OK','blue')}${stat('URLs/Webhooks',state.rules.filter(r=>String(r.responseType).includes('URL')||String(r.responseType).includes('Webhook')).length,'Criam teste no provedor','⚡')}${stat('Chamadas de API','11','Hoje','API')}</div><article class="card"><div class="filters"><input class="input" placeholder="Pesquisar regra ou palavra-chave"><select class="select"><option>Todos os dispositivos</option><option>WhatsApp principal</option></select></div>${state.rules.map(ruleCard).join('')}</article>`;
 }
 function ruleCard(r) {
-  return `<div class="rule-card"><div class="rule-top"><span class="automation-icon">${r.responseType?.includes('URL') || r.responseType?.includes('Webhook') ? 'âš¡' : 'â™Ÿ'}</span><div><h3>${safe(r.name)}</h3><p>Palavra-chave: <b>${safe(r.keyword)}</b> â€¢ ${safe(r.match)}</p></div>${badge(r.active)}<div class="mini-actions"><button data-action="edit-rule" data-id="${r.id}">Editar</button><button data-action="toggle-rule" data-id="${r.id}">${r.active?'Pausar':'Ativar'}</button></div></div><div class="rule-body"><div class="rule-step"><strong>Tipo de resposta</strong>${safe(r.responseType || 'Texto')}</div><div class="rule-step"><strong>URL / aÃ§Ã£o</strong>${safe(r.webhookUrl || r.action || 'Responder texto')}</div><div class="rule-step"><strong>Resposta ao cliente</strong>${safe(r.reply)}</div></div></div>`;
+  return `<div class="rule-card"><div class="rule-top"><span class="automation-icon">${r.responseType?.includes('URL') || r.responseType?.includes('Webhook') ? '⚡' : 'â™Ÿ'}</span><div><h3>${safe(r.name)}</h3><p>Palavra-chave: <b>${safe(r.keyword)}</b> • ${safe(r.match)}</p></div>${badge(r.active)}<div class="mini-actions"><button data-action="edit-rule" data-id="${r.id}">Editar</button><button data-action="toggle-rule" data-id="${r.id}">${r.active?'Pausar':'Ativar'}</button></div></div><div class="rule-body"><div class="rule-step"><strong>Tipo de resposta</strong>${safe(r.responseType || 'Texto')}</div><div class="rule-step"><strong>URL / ação</strong>${safe(r.webhookUrl || r.action || 'Responder texto')}</div><div class="rule-step"><strong>Resposta ao cliente</strong>${safe(r.reply)}</div></div></div>`;
 }
 
 function testLinksView() {
@@ -273,7 +309,7 @@ Content-Type: application/json
 }
 function testChatbotView() {
   const first = state.rules.find(r => r.keyword.includes('teste')) || state.rules[0];
-  return `<div class="banner"><div><h3>Ambiente seguro de teste</h3><p>Simula a conversa e mostra exatamente onde o link do pacote seria chamado.</p></div></div><div class="grid-2"><article class="card"><div class="card-head"><h2>Conversa simulada</h2><span class="tag">Dispositivo: WhatsApp principal</span></div><div class="chat-preview" id="chat"><div class="bubble">${safe(first.keyword)}<small>14:31</small></div><div class="bubble out">Chamando URL do pacote no painel IPTVâ€¦<small>14:31</small></div><div class="bubble out">âœ… Teste criado com sucesso\nUsuÃ¡rio: 633349\nSenha: 224689\nPlano: 4 horas\nLink M3U: enviado pelo provedor<small>14:31 âœ“âœ“</small></div></div><div class="filters" style="margin-top:12px"><input class="input" id="test-input" value="${safe(first.keyword)}"><button class="btn primary" data-action="simulate">Testar</button></div></article><article class="card"><div class="card-head"><h2>Rastreamento da execuÃ§Ã£o</h2></div><pre class="code">1  whatsapp_inbound    mensagem recebida
+  return `<div class="banner"><div><h3>Ambiente seguro de teste</h3><p>Simula a conversa e mostra exatamente onde o link do pacote seria chamado.</p></div></div><div class="grid-2"><article class="card"><div class="card-head"><h2>Conversa simulada</h2><span class="tag">Dispositivo: WhatsApp principal</span></div><div class="chat-preview" id="chat"><div class="bubble">${safe(first.keyword)}<small>14:31</small></div><div class="bubble out">Chamando URL do pacote no painel IPTV…<small>14:31</small></div><div class="bubble out">✅ Teste criado com sucesso\nUsuário: 633349\nSenha: 224689\nPlano: 4 horas\nLink M3U: enviado pelo provedor<small>14:31 ✓✓</small></div></div><div class="filters" style="margin-top:12px"><input class="input" id="test-input" value="${safe(first.keyword)}"><button class="btn primary" data-action="simulate">Testar</button></div></article><article class="card"><div class="card-head"><h2>Rastreamento da execução</h2></div><pre class="code">1  whatsapp_inbound    mensagem recebida
 2  match_keyword       "${safe(first.keyword)}"
 3  external_webhook    ${safe(first.method || 'POST')} ${safe(first.webhookUrl || 'sem URL')}
 4  provider_response   teste criado
@@ -288,7 +324,7 @@ function devicesView() {
 
 function appsView() {
   const apps = state.apps || [];
-  return `<div class="section-head"><div><h2>Aplicativos e API</h2><p>Credenciais independentes para cada integraÃ§Ã£o externa.</p></div><button class="btn primary" data-action="new-app">+ Criar aplicativo</button></div><div class="stats">${stat('Aplicativos',String(apps.filter(a=>a.status==='active').length),'Ativos','â–¦')}${stat('Mensagens enviadas','18','Via API','âž¤','blue')}${stat('Ãšltimos 30 dias','126','Processadas','â—·')}${stat('Falhas','0','IntegraÃ§Ã£o saudÃ¡vel','âœ“','warn')}</div>${apps.length?`<div class="integration-grid">${apps.map(a=>`<article class="card"><div class="connection"><span class="device-photo">API</span><div><h3>${safe(a.name)}</h3><p>App Key: ${safe(a.app_key_prefix)}â€¢â€¢â€¢â€¢â€¢â€¢</p></div>${badge(a.status==='active')}</div><div class="health-stack"><div><span>Ãšltimo uso</span><strong>${a.last_used_at?new Date(a.last_used_at).toLocaleString('pt-BR'):'Nunca'}</strong></div><div><span>Criado em</span><strong>${new Date(a.created_at).toLocaleDateString('pt-BR')}</strong></div></div></article>`).join('')}</div>`:`<article class="card">${empty('âŒ','Nenhum aplicativo','Crie credenciais para conectar um painel IPTV.','<button class="btn primary" data-action="new-app">Criar aplicativo</button>')}</article>`}<article class="card" style="margin-top:18px"><div class="card-head"><h2>Endpoint de mensagens</h2></div><pre class="code">POST https://SEU-SITE.netlify.app/api/iptv/send
+  return `<div class="section-head"><div><h2>Aplicativos e API</h2><p>Credenciais independentes para cada integração externa.</p></div><button class="btn primary" data-action="new-app">+ Criar aplicativo</button></div><div class="stats">${stat('Aplicativos',String(apps.filter(a=>a.status==='active').length),'Ativos','â–¦')}${stat('Mensagens enviadas','18','Via API','➤','blue')}${stat('Últimos 30 dias','126','Processadas','◷')}${stat('Falhas','0','Integração saudável','✓','warn')}</div>${apps.length?`<div class="integration-grid">${apps.map(a=>`<article class="card"><div class="connection"><span class="device-photo">API</span><div><h3>${safe(a.name)}</h3><p>App Key: ${safe(a.app_key_prefix)}••••••</p></div>${badge(a.status==='active')}</div><div class="health-stack"><div><span>Último uso</span><strong>${a.last_used_at?new Date(a.last_used_at).toLocaleString('pt-BR'):'Nunca'}</strong></div><div><span>Criado em</span><strong>${new Date(a.created_at).toLocaleDateString('pt-BR')}</strong></div></div></article>`).join('')}</div>`:`<article class="card">${empty('⌁','Nenhum aplicativo','Crie credenciais para conectar um painel IPTV.','<button class="btn primary" data-action="new-app">Criar aplicativo</button>')}</article>`}<article class="card" style="margin-top:18px"><div class="card-head"><h2>Endpoint de mensagens</h2></div><pre class="code">POST https://SEU-SITE.netlify.app/api/iptv/send
 x-app-key: SUA_APP_KEY
 x-auth-key: SUA_AUTH_KEY
 idempotency-key: ID_UNICO_DO_ENVIO
@@ -412,7 +448,7 @@ async function syncRemote() {
 
 function openRule(existing) {
   const r = existing || { name: '', keyword: '', match: 'Frase exata', responseType: 'URL / Servidor externo / Webhook', method: 'POST', webhookUrl: '', reply: '' };
-  modalContent.innerHTML = `<h2>${existing?'Editar':'Criar'} resposta automÃ¡tica</h2><p class="subtitle">Configure como no BotBot: palavra-chave, dispositivo, tipo URL/Webhook e resposta.</p><form id="rule-form"><div class="form-grid"><div class="field full"><label>Nome da automaÃ§Ã£o</label><input class="input" name="name" value="${safe(r.name)}" required placeholder="Ex.: Gerar teste IPTV"></div><div class="field"><label>Palavra-chave</label><input class="input" name="keyword" value="${safe(r.keyword)}" required placeholder="teste iptv"></div><div class="field"><label>CorrespondÃªncia</label><select class="select" name="match"><option ${r.match==='Frase exata'?'selected':''}>Frase exata</option><option ${r.match==='ContÃ©m'?'selected':''}>ContÃ©m</option><option ${r.match==='ComeÃ§a com'?'selected':''}>ComeÃ§a com</option></select></div><div class="field"><label>Dispositivo</label><select class="select" name="device"><option>WhatsApp principal</option></select></div><div class="field"><label>Tipo de resposta</label><select class="select" name="responseType"><option ${String(r.responseType).includes('URL')?'selected':''}>URL / Servidor externo / Webhook</option><option ${r.responseType==='Texto'?'selected':''}>Texto</option><option ${r.responseType==='Template'?'selected':''}>Template</option></select></div><div class="field"><label>MÃ©todo</label><select class="select" name="method"><option ${r.method==='POST'?'selected':''}>POST</option><option ${r.method==='GET'?'selected':''}>GET</option></select></div><div class="field full"><label>URL do pacote / webhook</label><input class="input" name="webhookUrl" value="${safe(r.webhookUrl)}" placeholder="https://painel.la/api/chatbot/... ou seu webhook"></div><div class="field full"><label>Resposta ao cliente / observaÃ§Ã£o</label><textarea name="reply" rows="5" placeholder="Se o painel retornar texto pronto, esta resposta pode ficar como fallback.">${safe(r.reply)}</textarea></div></div><div class="webhook-help"><strong>Request enviado para a URL</strong><pre>{ "senderPhone": "5588999991111", "message": "${safe(r.keyword || 'teste iptv')}" }</pre></div><div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancelar</button><button class="btn primary">Salvar automaÃ§Ã£o</button></div></form>`;
+  modalContent.innerHTML = `<h2>${existing?'Editar':'Criar'} resposta automática</h2><p class="subtitle">Configure como no BotBot: palavra-chave, dispositivo, tipo URL/Webhook e resposta.</p><form id="rule-form"><div class="form-grid"><div class="field full"><label>Nome da automação</label><input class="input" name="name" value="${safe(r.name)}" required placeholder="Ex.: Gerar teste IPTV"></div><div class="field"><label>Palavra-chave</label><input class="input" name="keyword" value="${safe(r.keyword)}" required placeholder="teste iptv"></div><div class="field"><label>Correspondência</label><select class="select" name="match"><option ${r.match==='Frase exata'?'selected':''}>Frase exata</option><option ${r.match==='Contém'?'selected':''}>Contém</option><option ${r.match==='Começa com'?'selected':''}>Começa com</option></select></div><div class="field"><label>Dispositivo</label><select class="select" name="device"><option>WhatsApp principal</option></select></div><div class="field"><label>Tipo de resposta</label><select class="select" name="responseType"><option ${String(r.responseType).includes('URL')?'selected':''}>URL / Servidor externo / Webhook</option><option ${r.responseType==='Texto'?'selected':''}>Texto</option><option ${r.responseType==='Template'?'selected':''}>Template</option></select></div><div class="field"><label>Método</label><select class="select" name="method"><option ${r.method==='POST'?'selected':''}>POST</option><option ${r.method==='GET'?'selected':''}>GET</option></select></div><div class="field full"><label>URL do pacote / webhook</label><input class="input" name="webhookUrl" value="${safe(r.webhookUrl)}" placeholder="https://painel.la/api/chatbot/... ou seu webhook"></div><div class="field full"><label>Resposta ao cliente / observação</label><textarea name="reply" rows="5" placeholder="Se o painel retornar texto pronto, esta resposta pode ficar como fallback.">${safe(r.reply)}</textarea></div></div><div class="webhook-help"><strong>Request enviado para a URL</strong><pre>{ "senderPhone": "5588999991111", "message": "${safe(r.keyword || 'teste iptv')}" }</pre></div><div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancelar</button><button class="btn primary">Salvar automação</button></div></form>`;
   modal.hidden = false;
   document.querySelector('#rule-form').onsubmit = async e => {
     e.preventDefault();
@@ -438,7 +474,7 @@ function openRule(existing) {
 function openAppModal() {
   const devices = state.devices || [];
   if (!devices.length) { toast('Crie e conecte um dispositivo antes do aplicativo.'); location.hash = '#dispositivos'; return; }
-  modalContent.innerHTML = `<h2>Criar aplicativo</h2><p class="subtitle">As chaves serÃ£o mostradas apenas uma vez.</p><form id="app-form"><div class="field"><label>Nome</label><input class="input" name="name" required placeholder="Ex.: Painel IPTV Alpha"></div><div class="field" style="margin-top:12px"><label>Dispositivo</label><select class="select" name="deviceId">${devices.map(d=>`<option value="${d.id}">${safe(d.name)}</option>`).join('')}</select></div><div id="app-result"></div><div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancelar</button><button class="btn primary">Gerar credenciais</button></div></form>`;
+  modalContent.innerHTML = `<h2>Criar aplicativo</h2><p class="subtitle">As chaves serão mostradas apenas uma vez.</p><form id="app-form"><div class="field"><label>Nome</label><input class="input" name="name" required placeholder="Ex.: Painel IPTV Alpha"></div><div class="field" style="margin-top:12px"><label>Dispositivo</label><select class="select" name="deviceId">${devices.map(d=>`<option value="${d.id}">${safe(d.name)}</option>`).join('')}</select></div><div id="app-result"></div><div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancelar</button><button class="btn primary">Gerar credenciais</button></div></form>`;
   modal.hidden = false;
   document.querySelector('#app-form').onsubmit = createApp;
 }
@@ -448,12 +484,12 @@ async function createApp(e) {
   const f = new FormData(e.currentTarget);
   const button = e.currentTarget.querySelector('button[type="submit"],button.btn.primary');
   button.disabled = true;
-  button.textContent = 'Gerandoâ€¦';
+  button.textContent = 'Gerando…';
   try {
     const response = await window.apiFetch('/api/apps', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: f.get('name'), deviceId: f.get('deviceId') }) });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Falha ao criar aplicativo');
-    document.querySelector('#app-result').innerHTML = `<div class="secret-result"><strong>Salve agora. NÃ£o mostraremos novamente.</strong><label>App Key</label><code>${safe(data.data.appKey)}</code><label>Auth Key</label><code>${safe(data.data.authKey)}</code></div>`;
+    document.querySelector('#app-result').innerHTML = `<div class="secret-result"><strong>Salve agora. Não mostraremos novamente.</strong><label>App Key</label><code>${safe(data.data.appKey)}</code><label>Auth Key</label><code>${safe(data.data.authKey)}</code></div>`;
     button.hidden = true;
     await syncRemote();
   } catch (error) {
@@ -498,7 +534,7 @@ async function deleteDevice(id) {
 }
 
 function openDeviceModal() {
-  modalContent.innerHTML = `<h2>Criar dispositivo</h2><p class="subtitle">Crie uma instÃ¢ncia na Evolution API e conecte o WhatsApp pelo QR Code.</p><form id="device-form"><div class="field"><label>Nome do dispositivo</label><input class="input" name="name" required minlength="3" placeholder="Ex.: atendimento-principal"></div><div class="field" style="margin-top:12px"><label>Tipo de conexÃ£o</label><select class="select" disabled><option>Evolution API â€¢ WhatsApp QR Code</option></select></div><div id="device-result" style="margin-top:16px"></div><div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancelar</button><button class="btn primary" id="create-device-submit">Criar e gerar QR Code</button></div></form>`;
+  modalContent.innerHTML = `<h2>Criar dispositivo</h2><p class="subtitle">Crie uma instância na Evolution API e conecte o WhatsApp pelo QR Code.</p><form id="device-form"><div class="field"><label>Nome do dispositivo</label><input class="input" name="name" required minlength="3" placeholder="Ex.: atendimento-principal"></div><div class="field" style="margin-top:12px"><label>Tipo de conexão</label><select class="select" disabled><option>Evolution API • WhatsApp QR Code</option></select></div><div id="device-result" style="margin-top:16px"></div><div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancelar</button><button class="btn primary" id="create-device-submit">Criar e gerar QR Code</button></div></form>`;
   modal.hidden = false;
   document.querySelector('#device-form').onsubmit = createDevice;
 }
@@ -509,19 +545,19 @@ async function createDevice(e) {
   const result = document.querySelector('#device-result');
   const name = new FormData(e.currentTarget).get('name');
   button.disabled = true;
-  button.textContent = 'Criando instÃ¢nciaâ€¦';
-  result.innerHTML = '<p class="subtitle">Conectando ao servidor Evolution APIâ€¦</p>';
+  button.textContent = 'Criando instância…';
+  result.innerHTML = '<p class="subtitle">Conectando ao servidor Evolution API…</p>';
   try {
-    if (location.protocol === 'file:') throw new Error('Abra o projeto com netlify dev ou publique no Netlify para usar a funÃ§Ã£o segura.');
+    if (location.protocol === 'file:') throw new Error('Abra o projeto com netlify dev ou publique no Netlify para usar a função segura.');
     const response = await window.apiFetch('/api/devices', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'NÃ£o foi possÃ­vel criar a instÃ¢ncia');
+    if (!response.ok) throw new Error(data.error || 'Não foi possível criar a instância');
     const qr = data.qrCode ? (data.qrCode.startsWith('data:') ? data.qrCode : `data:image/png;base64,${data.qrCode}`) : '';
-    result.innerHTML = `<div class="qr-result"><strong>InstÃ¢ncia criada: ${safe(data.instanceName)}</strong>${qr?`<img src="${qr}" alt="QR Code do WhatsApp"><p>WhatsApp â†’ Aparelhos conectados â†’ Conectar aparelho</p>`:'<p>A instÃ¢ncia foi criada, mas o servidor nÃ£o devolveu o QR Code.</p>'}<span class="badge pending" id="connection-state">Aguardando leitura</span></div>`;
+    result.innerHTML = `<div class="qr-result"><strong>Instância criada: ${safe(data.instanceName)}</strong>${qr?`<img src="${qr}" alt="QR Code do WhatsApp"><p>WhatsApp → Aparelhos conectados → Conectar aparelho</p>`:'<p>A instância foi criada, mas o servidor não devolveu o QR Code.</p>'}<span class="badge pending" id="connection-state">Aguardando leitura</span></div>`;
     button.hidden = true;
     if (qr) watchConnection(data.id);
   } catch (error) {
-    result.innerHTML = `<div class="call-note"><strong>NÃ£o foi possÃ­vel criar</strong><p>${safe(error.message)}</p></div>`;
+    result.innerHTML = `<div class="call-note"><strong>Não foi possível criar</strong><p>${safe(error.message)}</p></div>`;
     button.disabled = false;
     button.textContent = 'Tentar novamente';
   }
@@ -549,7 +585,7 @@ function watchConnection(instanceName) {
 function makeRuleFromLink(id) {
   const link = state.testLinks.find(t => t.id === id);
   if (!link) return;
-  openRule({ name: `Gerar teste â€¢ ${link.packageName}`, keyword: link.keyword, match: 'Frase exata', responseType: 'URL / Servidor externo / Webhook', method: 'POST', webhookUrl: link.url, reply: 'O painel IPTV retorna os dados do teste e o motor envia ao cliente.', active: true });
+  openRule({ name: `Gerar teste • ${link.packageName}`, keyword: link.keyword, match: 'Frase exata', responseType: 'URL / Servidor externo / Webhook', method: 'POST', webhookUrl: link.url, reply: 'O painel IPTV retorna os dados do teste e o motor envia ao cliente.', active: true });
 }
 
 function copy(text, message) {
@@ -565,7 +601,7 @@ function subscriberTopBar() {
   const plan = subscription.plan_code || tenant.plan_code || 'starter';
   const status = subscription.status || tenant.status || (productionMode() ? 'trial' : 'demo');
   const name = tenant.name || account.profile?.full_name || 'Minha operação';
-  return '<section class="subscriber-topbar"><div><small>Assinante</small><strong>' + safe(name) + '</strong></div><div><small>Plano</small><strong>' + safe(String(plan).toUpperCase()) + '</strong></div><div><small>Status</small><strong>' + safe(adminStatusLabel(status)) + '</strong></div><div><small>Teste grátis</small><strong>' + safe(account.access?.trialDaysLeft ?? 0) + ' dia(s)</strong></div><div><small>Uso mensal</small><strong>' + usageText(usage.messagesUsedThisMonth, usage.messagesLimit) + '</strong></div></section>';
+  return '<section class="subscriber-topbar"><div class="operation-cell"><small>Assinante</small><strong>' + safe(name) + '</strong><button class="mini-edit" data-action="edit-operation">Editar</button></div><div><small>WhatsApp</small><strong>' + safe(connectedDeviceLabel()) + '</strong></div><div><small>Plano</small><strong>' + safe(String(plan).toUpperCase()) + '</strong></div><div><small>Status</small><strong>' + safe(adminStatusLabel(status)) + '</strong></div><div><small>Teste grátis</small><strong>' + safe(account.access?.trialDaysLeft ?? 0) + ' dia(s)</strong></div><div><small>Uso mensal</small><strong>' + usageText(usage.messagesUsedThisMonth, usage.messagesLimit) + '</strong></div></section>';
 }
 
 function render() {
@@ -630,6 +666,7 @@ document.addEventListener('click', async e => {
     }
   }
   if (a === 'sign-out') { window.signOut?.(); return; }
+  if (a === 'edit-operation') openOperationModal();
   if (a === 'new-rule') openRule();
   if (a === 'edit-rule') openRule(state.rules.find(r => r.id === b.dataset.id));
   if (a === 'toggle-rule') { const r = state.rules.find(r => r.id === b.dataset.id); r.active = !r.active; save(); render(); }
@@ -638,16 +675,16 @@ document.addEventListener('click', async e => {
   if (a === 'new-device') openDeviceModal();
   if (a === 'show-device-qr') openExistingQrModal(b.dataset.id);
   if (a === 'delete-device') deleteDevice(b.dataset.id);
-  if (a === 'new-template') toast('Editor de templates serÃ¡ conectado ao banco.');
+  if (a === 'new-template') toast('Editor de templates será conectado ao banco.');
   if (a === 'edit-provider') openProviderModal();
   if (a === 'new-package') openPackageModal();
   if (a === 'set-provider-mode') { try { state.iptvProvider = { ...(state.iptvProvider || {}), mode: b.dataset.mode }; await persistProviderRemote(state.iptvProvider); save(); render(); toast(b.dataset.mode === 'api' ? 'Modo API completa selecionado.' : 'Modo links de teste selecionado.'); } catch (error) { toast(error instanceof Error ? error.message : 'Falha ao salvar modo IPTV.'); } }
-  if (a === 'test-package-url') { const p = state.testLinks.find(x => x.id === b.dataset.id); toast(p?.url ? 'URL pronta para teste seguro pelo backend: ' + p.url.slice(0, 42) + '...' : 'Pacote nÃ£o encontrado.'); }
+  if (a === 'test-package-url') { const p = state.testLinks.find(x => x.id === b.dataset.id); toast(p?.url ? 'URL pronta para teste seguro pelo backend: ' + p.url.slice(0, 42) + '...' : 'Pacote não encontrado.'); }
   if (a === 'delete-package') { try { await deletePackageRemote(b.dataset.id); state.testLinks = state.testLinks.filter(x => x.id !== b.dataset.id); save(); render(); toast('Pacote removido.'); } catch (error) { toast(error instanceof Error ? error.message : 'Falha ao remover pacote.'); } }
-  if (a === 'schedule') { state.scheduled.push({ id: crypto.randomUUID() }); save(); render(); toast('Agendamento de demonstraÃ§Ã£o criado.'); }
-  if (a === 'diagnose' || a === 'test-engine') toast('DiagnÃ³stico concluÃ­do: WhatsApp e motor online; API IPTV em modo modelo.');
-  if (a === 'restart-device') toast('ReinÃ­cio simulado. Em produÃ§Ã£o, esta aÃ§Ã£o reiniciarÃ¡ a sessÃ£o do WhatsApp.');
-  if (a === 'device-settings') toast('ConfiguraÃ§Ãµes do dispositivo: sessÃ£o, proxy, webhook e comportamento de chamadas.');
+  if (a === 'schedule') { state.scheduled.push({ id: crypto.randomUUID() }); save(); render(); toast('Agendamento de demonstração criado.'); }
+  if (a === 'diagnose' || a === 'test-engine') toast('Diagnóstico concluído: WhatsApp e motor online; API IPTV em modo modelo.');
+  if (a === 'restart-device') toast('Reinício simulado. Em produção, esta ação reiniciará a sessão do WhatsApp.');
+  if (a === 'device-settings') toast('Configurações do dispositivo: sessão, proxy, webhook e comportamento de chamadas.');
   if (a === 'new-app') openAppModal();
   if (a === 'copy-url') copy(b.dataset.url, 'URL copiada.');
   if (a === 'copy-payload') copy('{"senderPhone":"5588999991111","message":"teste iptv"}', 'Payload copiado.');

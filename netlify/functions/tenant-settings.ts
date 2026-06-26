@@ -23,24 +23,25 @@ const cleanText = (value: unknown, fallback: string, max = 4000) => {
   const text = String(value ?? "").trim();
   return (text || fallback).slice(0, max);
 };
+const cleanName = (value: unknown) => String(value ?? "").trim().replace(/\s+/g, " ").slice(0, 120);
 
 export default async (req: Request) => {
   try {
     const { profile } = await requireTenantUser(req);
     const tenantId = profile.tenant_id;
     if (req.method === "GET") {
-      const [tenant] = await supabase(`tenants?id=eq.${tenantId}&select=lead_capture_enabled,lead_greeting_template,lead_followup_template&limit=1`);
+      const [tenant] = await supabase(`tenants?id=eq.${tenantId}&select=name,lead_capture_enabled,lead_greeting_template,lead_followup_template&limit=1`);
       return json({ data: tenant || null });
     }
     if (req.method !== "PATCH") return json({ error: "Método não permitido" }, 405);
 
     const body = await req.json().catch(() => ({}));
-    const payload = {
-      lead_capture_enabled: body.lead_capture_enabled !== false,
-      lead_greeting_template: cleanText(body.lead_greeting_template, DEFAULT_GREETING),
-      lead_followup_template: cleanText(body.lead_followup_template, DEFAULT_FOLLOWUP, 1200),
-      updated_at: new Date().toISOString()
-    };
+    const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (Object.prototype.hasOwnProperty.call(body, "lead_capture_enabled")) payload.lead_capture_enabled = body.lead_capture_enabled !== false;
+    if (Object.prototype.hasOwnProperty.call(body, "lead_greeting_template")) payload.lead_greeting_template = cleanText(body.lead_greeting_template, DEFAULT_GREETING);
+    if (Object.prototype.hasOwnProperty.call(body, "lead_followup_template")) payload.lead_followup_template = cleanText(body.lead_followup_template, DEFAULT_FOLLOWUP, 1200);
+    const name = cleanName(body.name);
+    if (name) payload.name = name;
     const [tenant] = await supabase(`tenants?id=eq.${tenantId}`, { method: "PATCH", body: JSON.stringify(payload) });
     return json({ data: tenant || payload });
   } catch (error) {
