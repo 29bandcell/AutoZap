@@ -99,6 +99,12 @@ const parseDateTime = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 const pickRenewalSource = (payload: any) => payload?.data && typeof payload.data === "object" ? payload.data : (payload && typeof payload === "object" ? payload : {});
+function extractCheckoutUrl(value: unknown) {
+  const text = stringifyValue(value);
+  const matches = text.match(/https?:\/\/[^\s<>()"']+/gi) || [];
+  const cleaned = matches.map(url => url.replace(/[.,;!?]+$/, ""));
+  return cleaned.find(url => /checkout|renov|payment|pagamento|pay/i.test(url)) || cleaned[0] || "";
+}
 function renewalInfo(providerResponse: unknown, fallbackReply = "", fallbackRenewUrl = "") {
   const source: any = pickRenewalSource(providerResponse);
   const expiresRaw = source.expires_at_tz || source.expires_at || source.expiresAt || source.expiration || source.vencimento || source.due_at;
@@ -106,8 +112,9 @@ function renewalInfo(providerResponse: unknown, fallbackReply = "", fallbackRene
   const username = String(source.username || source.user || source.login || source.iptv_username || "").trim();
   const password = String(source.password || source.pass || source.iptv_password || "").trim();
   const plan = String(source.package || source.plan || source.plan_name || "").trim();
-  const renewUrl = String(source.renew_url || source.checkout_url || source.payment_url || source.paymentLink || fallbackRenewUrl || "").trim();
   const template = String(source.customer_renew_template || source.renew_template || source.renewal_message || "").trim();
+  const extractedRenewUrl = extractCheckoutUrl(template) || extractCheckoutUrl(fallbackReply) || extractCheckoutUrl(providerResponse);
+  const renewUrl = String(source.renew_url || source.checkout_url || source.payment_url || source.paymentLink || extractedRenewUrl || fallbackRenewUrl || "").trim();
   const customerId = String(source.id || source.customer_id || source.client_id || source.iptv_external_id || "").trim();
   const fallback = expiresMs || renewUrl || username ? [
     "Ol\u00e1! Seu teste IPTV " + (expiresMs && expiresMs <= Date.now() ? "venceu" : "est\u00e1 perto de vencer") + ".",
@@ -118,12 +125,12 @@ function renewalInfo(providerResponse: unknown, fallbackReply = "", fallbackRene
     "\n\nSe quiser renovar, fale com nosso atendimento."
   ].join("") : "";
   const message = template || fallback || fallbackReply;
-  const finalMessage = renewUrl && message && !/https?:\/\//i.test(message) ? `${message}\n\n💳 Assinar/Renovar Plano:\n✔️ ${renewUrl}` : message;
+  const finalMessage = renewUrl && message && !/https?:\/\//i.test(message) ? `${message}\n\n\u{1F4B3} Assinar/Renovar Plano:\n\u2714\uFE0F ${renewUrl}` : message;
   return { source, expiresRaw, expiresMs, username, password, plan, renewUrl, template, customerId, message: finalMessage };
 }
 async function scheduleRenewalReminder(params: { device: any; phone: string; data: any; contact: any; providerResponse: unknown; reply: string; messageId: string; packageConfig?: any }) {
   const { device, phone, data, contact, providerResponse, reply, messageId, packageConfig } = params;
-  const info = renewalInfo(providerResponse, "", String(packageConfig?.renewal_checkout_url || ""));
+  const info = renewalInfo(providerResponse, reply, String(packageConfig?.renewal_checkout_url || ""));
   const metadata = contact?.metadata && typeof contact.metadata === "object" ? contact.metadata : {};
   const nowIso = new Date().toISOString();
   await upsertContact(device, phone, data, {
