@@ -18,6 +18,7 @@ Aguardo sua resposta ðŸ¤“
 5 - Smart TV
 6 - Amazon Fire Stick`;
 const DEFAULT_FOLLOWUP = `Digite '{{keyword}}' para receber um teste gratuito.`;
+const TEST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 const normalizeText = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 const extractText = (data: any) => data?.message?.conversation || data?.message?.extendedTextMessage?.text || data?.message?.imageMessage?.caption || data?.message?.videoMessage?.caption || "";
@@ -123,22 +124,26 @@ function renewalInfo(providerResponse: unknown, fallbackReply = "", fallbackRene
 async function scheduleRenewalReminder(params: { device: any; phone: string; data: any; contact: any; providerResponse: unknown; reply: string; messageId: string; packageConfig?: any }) {
   const { device, phone, data, contact, providerResponse, reply, messageId, packageConfig } = params;
   const info = renewalInfo(providerResponse, "", String(packageConfig?.renewal_checkout_url || ""));
-  if (!info.message.trim() || (!info.expiresMs && !info.renewUrl && !info.template && !info.username)) return;
   const metadata = contact?.metadata && typeof contact.metadata === "object" ? contact.metadata : {};
+  const nowIso = new Date().toISOString();
   await upsertContact(device, phone, data, {
     ...metadata,
+    lead_capture_stage: "awaiting_keyword",
     iptv_last_test: {
+      ...(metadata as any).iptv_last_test,
       customer_id: info.customerId || null,
       username: info.username || null,
       password: info.password || null,
       plan: info.plan || null,
-      renew_url: info.renewUrl || null,
+      renew_url: info.renewUrl || String(packageConfig?.renewal_checkout_url || "") || null,
       package_id: packageConfig?.id || null,
       expires_at: info.expiresRaw || null,
-      reminder_message: info.message,
-      provider_response_saved_at: new Date().toISOString()
+      reminder_message: info.message || reply || null,
+      requested_at: nowIso,
+      provider_response_saved_at: nowIso
     }
   });
+  if (!info.message.trim() || (!info.expiresMs && !info.renewUrl && !info.template && !info.username)) return;
   const scheduledMs = info.expiresMs && info.expiresMs > Date.now() ? info.expiresMs : Date.now() + 60_000;
   const scheduledFor = new Date(scheduledMs).toISOString();
   const keyParts = ["renewal", device.id, phone, info.customerId || info.username || messageId, info.expiresMs || "now"];
@@ -165,6 +170,23 @@ async function firstTestKeyword(tenantId: string, deviceId: string) {
   const packageForDevice = (packages || []).find((item: any) => !item.device_id || item.device_id === deviceId) || packages?.[0];
   return String(packageForDevice?.keyword || "teste iptv").trim() || "teste iptv";
 }
+function lastTestTimestamp(metadata: any) {
+  const raw = metadata?.iptv_last_test?.requested_at || metadata?.iptv_last_test?.provider_response_saved_at || "";
+  const parsed = Date.parse(String(raw));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function recentTestMessage(metadata: any, packageConfig: any) {
+  const lastTest = metadata?.iptv_last_test || {};
+  const renewUrl = String(packageConfig?.renewal_checkout_url || lastTest.renew_url || "").trim();
+  const base = "Você já solicitou um teste recentemente. Para liberar outro teste automático, aguarde 24 horas desde a última solicitação.";
+  return renewUrl ? `${base}\n\n💳 Para ativar ou renovar seu acesso, acesse:\n✔️ ${renewUrl}` : `${base}\n\nSe quiser ativar agora, fale com nosso atendimento.`;
+}
+async function isFirstTestKeyword(tenantId: string, deviceId: string, text: string) {
+  const keyword = await firstTestKeyword(tenantId, deviceId);
+  const input = normalizeText(text);
+  const normalizedKeyword = normalizeText(keyword);
+  return !!normalizedKeyword && (input === normalizedKeyword || input.includes(normalizedKeyword));
+}
 async function handleLeadCapture(params: { device: any; instance: string; phone: string; text: string; messageId: string; data: any; contact: any; tenant: any }) {
   const { device, instance, phone, text, messageId, data, contact, tenant } = params;
   if (tenant?.lead_capture_enabled === false) return false;
@@ -189,6 +211,13 @@ async function handleLeadCapture(params: { device: any; instance: string; phone:
     await upsertContact(device, phone, data, nextMetadata);
     const result = await send(instance, phone, reply);
     await logOutbound(device, `lead-step:${messageId}`, phone, reply, { whatsapp: result, lead_capture: nextMetadata.lead_capture_stage || "awaiting_device" });
+    return true;
+  }
+  if (stage === "awaiting_keyword" && !(await isFirstTestKeyword(device.tenant_id, device.id, text))) {
+    const reply = renderTemplate(String(tenant?.lead_greeting_template || DEFAULT_GREETING), context);
+    await upsertContact(device, phone, data, { ...metadata, lead_capture_stage: "awaiting_device", lead_capture_last_prompt_at: new Date().toISOString() });
+    const result = await send(instance, phone, reply);
+    await logOutbound(device, `lead-restart:${messageId}`, phone, reply, { whatsapp: result, lead_capture: "restart" });
     return true;
   }
   return false;
@@ -260,6 +289,15 @@ export default async (req: Request) => {
     let packageConfig: any = null;
     if (["webhook", "url", "external_webhook", "server"].includes(actionType)) {
       packageConfig = await findRulePackageConfig(device.tenant_id, device.id, rule);
+      const metadata = contact?.metadata && typeof contact.metadata === "object" ? contact.metadata : {};
+      const previousTestMs = packageConfig ? lastTestTimestamp(metadata) : null;
+      if (previousTestMs && Date.now() - previousTestMs < TEST_COOLDOWN_MS) {
+        const cooldownReply = recentTestMessage(metadata, packageConfig);
+        const result = await send(instance, phone, cooldownReply);
+        await upsertContact(device, phone, data, { ...metadata, lead_capture_stage: "awaiting_keyword", lead_capture_last_cooldown_at: new Date().toISOString() });
+        await logOutbound(device, `test-cooldown:${messageId}`, phone, cooldownReply, { whatsapp: result, lead_capture: "cooldown", package_id: packageConfig?.id || null });
+        return new Response(null, { status: 204 });
+      }
       providerResponse = await callExternalWebhook(rule, webhookPayload);
       reply = responseToText(providerResponse, String(rule.reply_template || ""), { name: firstName(data.pushName), inbound: webhookPayload, api: typeof providerResponse === "object" ? providerResponse : { text: providerResponse } });
     } else if (!rule.action?.type || actionType === "reply") {
