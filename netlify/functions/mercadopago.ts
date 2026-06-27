@@ -108,23 +108,23 @@ async function checkout(req: Request) {
   const body = await req.json().catch(() => ({}));
   const plan = parsePlan(body.planCode);
   const baseUrl = siteUrl(req);
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
   const payload = {
-    reason: plan.name,
+    transaction_amount: Number(plan.amount.toFixed(2)),
+    description: plan.name,
+    payment_method_id: "pix",
     external_reference: `${profile.tenant_id}:${plan.code}`,
-    payer_email: user.email,
-    back_url: `${baseUrl}/#planos`,
     notification_url: `${baseUrl}/api/mercadopago/webhook`,
-    auto_recurring: {
-      frequency: 1,
-      frequency_type: "months",
-      transaction_amount: plan.amount,
-      currency_id: "BRL"
-    },
-    status: "pending"
+    date_of_expiration: expiresAt,
+    payer: {
+      email: user.email || `${profile.id}@autozap.local`
+    }
   };
-  const mp = await mercadoPago("/preapproval", { method: "POST", body: JSON.stringify(payload) });
-  await upsertSubscription({ tenantId: profile.tenant_id, plan, status: "trial", externalSubscriptionId: mp.id, providerResponse: mp });
-  return json({ data: { id: mp.id, plan: plan.code, checkoutUrl: mp.init_point || mp.sandbox_init_point, sandboxCheckoutUrl: mp.sandbox_init_point } });
+  const mp = await mercadoPago("/v1/payments", { method: "POST", headers: { "x-idempotency-key": crypto.randomUUID() }, body: JSON.stringify(payload) });
+  await upsertSubscription({ tenantId: profile.tenant_id, plan, status: "trial", externalSubscriptionId: String(mp.id || ""), providerResponse: mp });
+  const transaction = mp.point_of_interaction?.transaction_data || {};
+  const qrCodeBase64 = transaction.qr_code_base64 ? `data:image/png;base64,${transaction.qr_code_base64}` : "";
+  return json({ data: { id: mp.id, plan: plan.code, amount: plan.amount, method: "pix", status: mp.status, qrCode: transaction.qr_code || "", qrCodeBase64, ticketUrl: transaction.ticket_url || "", expiresAt } });
 }
 
 function getSignatureParts(header: string) {

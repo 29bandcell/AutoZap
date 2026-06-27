@@ -588,6 +588,13 @@ function makeRuleFromLink(id) {
   openRule({ name: `Gerar teste • ${link.packageName}`, keyword: link.keyword, match: 'Frase exata', responseType: 'URL / Servidor externo / Webhook', method: 'POST', webhookUrl: link.url, reply: 'O painel IPTV retorna os dados do teste e o motor envia ao cliente.', active: true });
 }
 
+function openPixPaymentModal(payment) {
+  const qrImage = payment.qrCodeBase64 ? '<img src="' + safe(payment.qrCodeBase64) + '" alt="QR Code Pix" class="pix-qr">' : '';
+  const expires = payment.expiresAt ? new Date(payment.expiresAt).toLocaleString('pt-BR') : 'em alguns minutos';
+  modalContent.innerHTML = '<h2>Pagamento via Pix</h2><p class="subtitle">Escaneie o QR Code ou copie o código Pix para ativar seu plano após a confirmação.</p><div class="pix-box">' + qrImage + '<div><strong>Valor: R$ ' + Number(payment.amount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '</strong><small>Vence em: ' + safe(expires) + '</small></div></div><div class="field full"><label>Pix copia e cola</label><textarea rows="5" readonly>' + safe(payment.qrCode || '') + '</textarea></div><div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Fechar</button><button type="button" class="btn primary" data-action="copy-pix-code" data-pix="' + safe(payment.qrCode || '') + '">Copiar Pix</button></div><div class="call-note"><strong>Liberação automática</strong><p>Quando o Mercado Pago confirmar o Pix, o AutoZap atualiza seu plano pelo webhook.</p></div>';
+  modal.hidden = false;
+}
+
 function copy(text, message) {
   navigator.clipboard?.writeText(text).then(() => toast(message)).catch(() => toast(text));
 }
@@ -640,10 +647,16 @@ document.addEventListener('click', async e => {
     if (!productionMode()) { toast('Checkout disponível apenas no ambiente publicado.'); return; }
     try {
       b.disabled = true;
-      b.textContent = 'Abrindo pagamento...';
+      b.textContent = 'Gerando Pix...';
       const response = await window.apiFetch('/api/mercadopago/checkout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ planCode }) });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Não foi possível criar assinatura');
+      if (!response.ok) throw new Error(data.error || 'Não foi possível gerar Pix');
+      if (data.data?.method === 'pix') {
+        openPixPaymentModal(data.data);
+        b.disabled = false;
+        b.textContent = 'Quero esse plano';
+        return;
+      }
       const checkoutUrl = data.data?.checkoutUrl || data.data?.sandboxCheckoutUrl;
       if (!checkoutUrl) throw new Error('Mercado Pago não retornou link de pagamento');
       location.href = checkoutUrl;
@@ -688,6 +701,7 @@ document.addEventListener('click', async e => {
   if (a === 'restart-device') toast('Reinício simulado. Em produção, esta ação reiniciará a sessão do WhatsApp.');
   if (a === 'device-settings') toast('Configurações do dispositivo: sessão, proxy, webhook e comportamento de chamadas.');
   if (a === 'new-app') openAppModal();
+  if (a === 'copy-pix-code') copy(b.dataset.pix, 'Código Pix copiado.');
   if (a === 'copy-url') copy(b.dataset.url, 'URL copiada.');
   if (a === 'copy-payload') copy('{"senderPhone":"5588999991111","message":"teste iptv"}', 'Payload copiado.');
   if (a === 'make-rule') makeRuleFromLink(b.dataset.id);
