@@ -406,7 +406,7 @@ function updateAccountShell() {
   const platformAdmin = !!account.platformAdmin;
   const name = platformAdmin ? 'Admin AutoZap' : (tenant.name || profile.full_name || 'Minha operação');
   const roleMap = { owner: 'Assinante', admin: 'Administrador', reseller: 'Revendedor', agent: 'Atendente' };
-  const role = platformAdmin ? 'Administrador da plataforma' : (roleMap[profile.role] || (productionMode() ? 'Assinante' : 'Demonstração'));
+  const role = platformAdmin ? 'ADMIN' : (roleMap[profile.role] || (productionMode() ? 'Assinante' : 'Demonstração'));
   const mode = platformAdmin ? 'Gestão de assinantes' : (productionMode()
     ? (subscription.status === 'trial' && account.access?.trialDaysLeft ? `Teste grátis • ${account.access.trialDaysLeft} dia(s)` : 'Conta ativa')
     : 'Modo demonstração local');
