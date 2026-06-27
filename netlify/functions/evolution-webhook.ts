@@ -3,13 +3,13 @@ import { json, requiredEnv } from "./_shared/http.ts";
 import { supabase } from "./_shared/supabase.ts";
 import { constantTimeEqual } from "./_shared/secrets.ts";
 
-const DEFAULT_GREETING = `OlÃ¡, que bom te ter aqui!
+const DEFAULT_GREETING = `Ol\u00e1, que bom te ter aqui!
 
-Sou {{company_name}}. ðŸ™â€â™‚ï¸
+Sou {{company_name}}. \u{1F64D}\u200D\u2642\uFE0F
 
-ðŸ”¸Em qual aparelho irÃ¡ testar?
+\u{1F538}Em qual aparelho ir\u00e1 testar?
 
-Aguardo sua resposta ðŸ¤“
+Aguardo sua resposta \u{1F913}
 
 1 - TV Box
 2 - Celular
@@ -110,15 +110,15 @@ function renewalInfo(providerResponse: unknown, fallbackReply = "", fallbackRene
   const template = String(source.customer_renew_template || source.renew_template || source.renewal_message || "").trim();
   const customerId = String(source.id || source.customer_id || source.client_id || source.iptv_external_id || "").trim();
   const fallback = expiresMs || renewUrl || username ? [
-    "OlÃ¡! Seu teste IPTV " + (expiresMs && expiresMs <= Date.now() ? "venceu" : "estÃ¡ perto de vencer") + ".",
-    username ? "\nUsuÃ¡rio: " + username : "",
+    "Ol\u00e1! Seu teste IPTV " + (expiresMs && expiresMs <= Date.now() ? "venceu" : "est\u00e1 perto de vencer") + ".",
+    username ? "\nUsu\u00e1rio: " + username : "",
     password ? "\nSenha: " + password : "",
     plan ? "\nPlano: " + plan : "",
     renewUrl ? "\n\nPara renovar, acesse:\n" + renewUrl : "",
     "\n\nSe quiser renovar, fale com nosso atendimento."
   ].join("") : "";
   const message = template || fallback || fallbackReply;
-  const finalMessage = renewUrl && message && !/https?:\/\//i.test(message) ? `${message}\n\nðŸ’³ Assinar/Renovar Plano:\nâœ”ï¸ ${renewUrl}` : message;
+  const finalMessage = renewUrl && message && !/https?:\/\//i.test(message) ? `${message}\n\n💳 Assinar/Renovar Plano:\n✔️ ${renewUrl}` : message;
   return { source, expiresRaw, expiresMs, username, password, plan, renewUrl, template, customerId, message: finalMessage };
 }
 async function scheduleRenewalReminder(params: { device: any; phone: string; data: any; contact: any; providerResponse: unknown; reply: string; messageId: string; packageConfig?: any }) {
@@ -177,7 +177,7 @@ function lastTestTimestamp(metadata: any) {
 }
 function recentTestMessage(metadata: any, packageConfig: any) {
   const lastTest = metadata?.iptv_last_test || {};
-  const renewUrl = String(packageConfig?.renewal_checkout_url || lastTest.renew_url || "").trim();
+  const renewUrl = String(lastTest.renew_url || packageConfig?.renewal_checkout_url || "").trim();
   const base = "Você já solicitou um teste recentemente. Para liberar outro teste automático, aguarde 24 horas desde a última solicitação.";
   return renewUrl ? `${base}\n\n💳 Para ativar ou renovar seu acesso, acesse:\n✔️ ${renewUrl}` : `${base}\n\nSe quiser ativar agora, fale com nosso atendimento.`;
 }

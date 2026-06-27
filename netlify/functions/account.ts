@@ -33,7 +33,7 @@ export default async (req: Request) => {
     return json({
       data: {
         tenant,
-        profile: { id: profile.id, full_name: profile.full_name, role: profile.role },
+        profile: { id: profile.id, full_name: profile.full_name, role: profile.role, email: user.email || "" },
         subscription,
         platformAdmin: isPlatformAdmin(user.email),
         usage: {

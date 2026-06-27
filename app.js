@@ -598,10 +598,12 @@ function subscriberTopBar() {
   const tenant = account.tenant || {};
   const subscription = account.subscription || {};
   const usage = account.usage || {};
+  const profile = account.profile || {};
   const plan = subscription.plan_code || tenant.plan_code || 'starter';
   const status = subscription.status || tenant.status || (productionMode() ? 'trial' : 'demo');
-  const name = tenant.name || account.profile?.full_name || 'Minha operação';
-  return '<section class="subscriber-topbar"><div class="operation-cell"><small>Assinante</small><strong>' + safe(name) + '</strong><button class="mini-edit" data-action="edit-operation">Editar</button></div><div><small>WhatsApp</small><strong>' + safe(connectedDeviceLabel()) + '</strong></div><div><small>Plano</small><strong>' + safe(String(plan).toUpperCase()) + '</strong></div><div><small>Status</small><strong>' + safe(adminStatusLabel(status)) + '</strong></div><div><small>Teste grátis</small><strong>' + safe(account.access?.trialDaysLeft ?? 0) + ' dia(s)</strong></div><div><small>Uso mensal</small><strong>' + usageText(usage.messagesUsedThisMonth, usage.messagesLimit) + '</strong></div></section>';
+  const name = tenant.name || profile.full_name || 'Minha operação';
+  const email = profile.email || 'E-mail não informado';
+  return '<section class="subscriber-topbar"><div class="operation-cell"><small>Assinante</small><strong>' + safe(name) + '</strong><button class="mini-edit" data-action="edit-operation">Editar</button></div><div><small>E-mail</small><strong>' + safe(email) + '</strong></div><div><small>WhatsApp</small><strong>' + safe(connectedDeviceLabel()) + '</strong></div><div><small>Plano</small><strong>' + safe(String(plan).toUpperCase()) + '</strong></div><div><small>Status</small><strong>' + safe(adminStatusLabel(status)) + '</strong></div><div><small>Teste grátis</small><strong>' + safe(account.access?.trialDaysLeft ?? 0) + ' dia(s)</strong></div><div><small>Uso mensal</small><strong>' + usageText(usage.messagesUsedThisMonth, usage.messagesLimit) + '</strong></div></section>';
 }
 
 function render() {
