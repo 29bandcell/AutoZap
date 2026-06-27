@@ -3,13 +3,13 @@ import { json, requiredEnv } from "./_shared/http.ts";
 import { supabase } from "./_shared/supabase.ts";
 import { constantTimeEqual } from "./_shared/secrets.ts";
 
-const DEFAULT_GREETING = `Olá, que bom te ter aqui!
+const DEFAULT_GREETING = `OlÃ¡, que bom te ter aqui!
 
-Sou {{company_name}}. 🙍‍♂️
+Sou {{company_name}}. ðŸ™â€â™‚ï¸
 
-🔸Em qual aparelho irá testar?
+ðŸ”¸Em qual aparelho irÃ¡ testar?
 
-Aguardo sua resposta 🤓
+Aguardo sua resposta ðŸ¤“
 
 1 - TV Box
 2 - Celular
@@ -44,7 +44,7 @@ const responseToText = (payload: any, fallback: string, context: Record<string, 
 };
 const assertWebhookUrl = (url: string) => {
   const parsed = new URL(url);
-  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("URL de webhook inválida");
+  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("URL de webhook invÃ¡lida");
   if (["localhost", "127.0.0.1", "0.0.0.0"].includes(parsed.hostname)) throw new Error("URL de webhook local bloqueada");
   return parsed;
 };
@@ -109,15 +109,15 @@ function renewalInfo(providerResponse: unknown, fallbackReply = "", fallbackRene
   const template = String(source.customer_renew_template || source.renew_template || source.renewal_message || "").trim();
   const customerId = String(source.id || source.customer_id || source.client_id || source.iptv_external_id || "").trim();
   const fallback = expiresMs || renewUrl || username ? [
-    "Olá! Seu teste IPTV " + (expiresMs && expiresMs <= Date.now() ? "venceu" : "está perto de vencer") + ".",
-    username ? "\nUsuário: " + username : "",
+    "OlÃ¡! Seu teste IPTV " + (expiresMs && expiresMs <= Date.now() ? "venceu" : "estÃ¡ perto de vencer") + ".",
+    username ? "\nUsuÃ¡rio: " + username : "",
     password ? "\nSenha: " + password : "",
     plan ? "\nPlano: " + plan : "",
     renewUrl ? "\n\nPara renovar, acesse:\n" + renewUrl : "",
     "\n\nSe quiser renovar, fale com nosso atendimento."
   ].join("") : "";
   const message = template || fallback || fallbackReply;
-  const finalMessage = renewUrl && message && !/https?:\/\//i.test(message) ? `${message}\n\n💳 Assinar/Renovar Plano:\n✔️ ${renewUrl}` : message;
+  const finalMessage = renewUrl && message && !/https?:\/\//i.test(message) ? `${message}\n\nðŸ’³ Assinar/Renovar Plano:\nâœ”ï¸ ${renewUrl}` : message;
   return { source, expiresRaw, expiresMs, username, password, plan, renewUrl, template, customerId, message: finalMessage };
 }
 async function scheduleRenewalReminder(params: { device: any; phone: string; data: any; contact: any; providerResponse: unknown; reply: string; messageId: string; packageConfig?: any }) {
@@ -170,9 +170,9 @@ async function handleLeadCapture(params: { device: any; instance: string; phone:
   if (tenant?.lead_capture_enabled === false) return false;
   const metadata = contact?.metadata && typeof contact.metadata === "object" ? contact.metadata : {};
   const context = { name: firstName(data.pushName), company_name: tenant?.name || "AutoZap", inbound: { senderPhone: phone, message: text } };
-  const isNewContact = !contact?.id;
   const stage = String(metadata.lead_capture_stage || "");
-  if (isNewContact) {
+  const leadAlreadyStarted = !!metadata.lead_capture_started_at || !!metadata.lead_capture_stage;
+  if (!leadAlreadyStarted) {
     const reply = renderTemplate(String(tenant?.lead_greeting_template || DEFAULT_GREETING), context);
     await upsertContact(device, phone, data, { ...metadata, lead_capture_stage: "awaiting_device", lead_capture_started_at: new Date().toISOString(), lead_capture_last_prompt_at: new Date().toISOString() });
     const result = await send(instance, phone, reply);
@@ -195,14 +195,14 @@ async function handleLeadCapture(params: { device: any; instance: string; phone:
 }
 
 export default async (req: Request) => {
-  if (req.method !== "POST") return json({ error: "Método não permitido" }, 405);
+  if (req.method !== "POST") return json({ error: "MÃ©todo nÃ£o permitido" }, 405);
   const expected = requiredEnv("EVOLUTION_WEBHOOK_SECRET");
   const received = req.headers.get("x-webhook-secret") || new URL(req.url).searchParams.get("token") || "";
-  if (!constantTimeEqual(received, expected)) return json({ error: "Webhook não autorizado" }, 401);
+  if (!constantTimeEqual(received, expected)) return json({ error: "Webhook nÃ£o autorizado" }, 401);
   try {
     const body = await req.json();
     const instance = String(body.instance || body.instanceName || "");
-    if (!instance) return json({ error: "Instância ausente" }, 400);
+    if (!instance) return json({ error: "InstÃ¢ncia ausente" }, 400);
     const devices = await supabase(`devices?instance_name=eq.${encodeURIComponent(instance)}&select=id,tenant_id,instance_name&limit=1`);
     if (!devices?.length) return new Response(null, { status: 204 });
     const device = devices[0];
@@ -234,8 +234,8 @@ export default async (req: Request) => {
     const optedIn = startWords.includes(normalized);
     const currentContacts = await supabase(`contacts?tenant_id=eq.${device.tenant_id}&phone=eq.${phone}&select=id,opted_out_at,metadata&limit=1`);
     const contact = currentContacts?.[0] || null;
-    if (optedOut) { await upsertContact(device, phone, data, contact?.metadata || {}, new Date().toISOString()); await send(instance, phone, "Você não receberá mais mensagens automáticas. Para voltar, envie VOLTAR."); return new Response(null, { status: 204 }); }
-    if (optedIn) { await upsertContact(device, phone, data, { ...(contact?.metadata || {}), lead_capture_stage: "awaiting_keyword" }, null); await send(instance, phone, "Mensagens automáticas reativadas com sucesso."); return new Response(null, { status: 204 }); }
+    if (optedOut) { await upsertContact(device, phone, data, contact?.metadata || {}, new Date().toISOString()); await send(instance, phone, "VocÃª nÃ£o receberÃ¡ mais mensagens automÃ¡ticas. Para voltar, envie VOLTAR."); return new Response(null, { status: 204 }); }
+    if (optedIn) { await upsertContact(device, phone, data, { ...(contact?.metadata || {}), lead_capture_stage: "awaiting_keyword" }, null); await send(instance, phone, "Mensagens automÃ¡ticas reativadas com sucesso."); return new Response(null, { status: 204 }); }
     if (contact?.opted_out_at) return new Response(null, { status: 204 });
     const tenants = await supabase(`tenants?id=eq.${device.tenant_id}&select=name,lead_capture_enabled,lead_greeting_template,lead_followup_template&limit=1`);
     const handledLeadCapture = await handleLeadCapture({ device, instance, phone, text, messageId, data, contact, tenant: tenants?.[0] || {} });
