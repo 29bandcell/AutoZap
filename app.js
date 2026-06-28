@@ -220,6 +220,14 @@ async function persistRuleRemote(rule) {
   if (!response.ok) throw new Error(data.error || 'Falha ao salvar regra do chatbot');
   return data;
 }
+async function deleteRuleRemote(id) {
+  if (!productionMode()) return;
+  const response = await window.apiFetch(`/api/automation-rules/${id}`, { method: 'DELETE' });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Falha ao excluir regra do chatbot');
+  }
+}
 
 const views = {
   dashboard: () => `<div class="banner"><div><h3>Motor de automação ativo</h3><p>O WhatsApp recebe a palavra-chave, chama o link/API do painel IPTV e devolve o teste para o cliente.</p></div><a class="btn" href="#testes">Ver testes automáticos</a></div><div class="stats">${stat('Dispositivos','1 / 1','WhatsApp conectado','â–£')}${stat('Respostas ativas',state.rules.filter(r=>r.active).length,'Prontas para responder','â™Ÿ','blue')}${stat('Links de teste',state.testLinks.length,'Cadastrados','⚡')}${stat('Falhas de API','0','Últimas 24 horas','✓','warn')}</div><article class="card" style="margin-bottom:20px"><div class="card-head"><h2>Fluxo igual ao BotBot</h2><a href="#chatbot">Configurar chatbot</a></div><div class="flow"><div class="flow-card"><div class="flow-icon">WA</div><h3>1. Cliente escreve</h3><p>Ex.: “teste iptv” no WhatsApp conectado.</p></div><div class="flow-arrow">→</div><div class="flow-card"><div class="flow-icon">⚡</div><h3>2. Chama URL</h3><p>A regra aciona o link do painel IPTV/provedor para criar o teste.</p></div><div class="flow-arrow">→</div><div class="flow-card"><div class="flow-icon">TV</div><h3>3. Envia resposta</h3><p>Usuário, senha, vencimento e links retornam no WhatsApp.</p></div></div></article><div class="grid-2"><article class="card"><div class="card-head"><h2>Mensagens processadas</h2><a>Últimos 7 dias</a></div><div class="chart">${[42,55,38,72,61,87,66,91,74,83,68,94].map(v=>`<div class="bar" style="height:${v}%" data-value="${v}"></div>`).join('')}</div></article><article class="card"><div class="card-head"><h2>Últimas execuções</h2><a href="#logs">Ver logs</a></div>${state.logs.map(l=>`<div class="activity-item"><span class="activity-icon">✓</span><div><strong>${l.rule}</strong><small>${l.from} • ${l.keyword}</small></div><time>${l.at}</time></div>`).join('')}</article></div>`,
@@ -287,7 +295,7 @@ function chatbotView() {
   return `<div class="section-head"><div><h2>Respostas e automações</h2><p>Cada resposta liga uma palavra-chave do WhatsApp a texto, template ou URL externa.</p></div><button class="btn primary" data-action="new-rule">+ Criar resposta</button></div>${leadSettingsCard()}<div class="stats">${stat('Respostas',state.rules.length,'Total cadastrado','BOT')}${stat('Ativas',state.rules.filter(r=>r.active).length,'Respondendo agora','OK','blue')}${stat('URLs/Webhooks',state.rules.filter(r=>String(r.responseType).includes('URL')||String(r.responseType).includes('Webhook')).length,'Criam teste no provedor','⚡')}${stat('Chamadas de API','11','Hoje','API')}</div><article class="card"><div class="filters"><input class="input" placeholder="Pesquisar regra ou palavra-chave"><select class="select"><option>Todos os dispositivos</option><option>WhatsApp principal</option></select></div>${state.rules.map(ruleCard).join('')}</article>`;
 }
 function ruleCard(r) {
-  return `<div class="rule-card"><div class="rule-top"><span class="automation-icon">${r.responseType?.includes('URL') || r.responseType?.includes('Webhook') ? '⚡' : 'â™Ÿ'}</span><div><h3>${safe(r.name)}</h3><p>Palavra-chave: <b>${safe(r.keyword)}</b> • ${safe(r.match)}</p></div>${badge(r.active)}<div class="mini-actions"><button data-action="edit-rule" data-id="${r.id}">Editar</button><button data-action="toggle-rule" data-id="${r.id}">${r.active?'Pausar':'Ativar'}</button></div></div><div class="rule-body"><div class="rule-step"><strong>Tipo de resposta</strong>${safe(r.responseType || 'Texto')}</div><div class="rule-step"><strong>URL / ação</strong>${safe(r.webhookUrl || r.action || 'Responder texto')}</div><div class="rule-step"><strong>Resposta ao cliente</strong>${safe(r.reply)}</div></div></div>`;
+  return `<div class="rule-card"><div class="rule-top"><span class="automation-icon">${r.responseType?.includes('URL') || r.responseType?.includes('Webhook') ? '⚡' : 'â™Ÿ'}</span><div><h3>${safe(r.name)}</h3><p>Palavra-chave: <b>${safe(r.keyword)}</b> • ${safe(r.match)}</p></div>${badge(r.active)}<div class="mini-actions"><button data-action="edit-rule" data-id="${r.id}">Editar</button><button data-action="toggle-rule" data-id="${r.id}">${r.active?'Pausar':'Ativar'}</button><button class="danger" data-action="delete-rule" data-id="${r.id}">Excluir</button></div></div><div class="rule-body"><div class="rule-step"><strong>Tipo de resposta</strong>${safe(r.responseType || 'Texto')}</div><div class="rule-step"><strong>URL / ação</strong>${safe(r.webhookUrl || r.action || 'Responder texto')}</div><div class="rule-step"><strong>Resposta ao cliente</strong>${safe(r.reply)}</div></div></div>`;
 }
 
 function testLinksView() {
@@ -685,6 +693,20 @@ document.addEventListener('click', async e => {
   if (a === 'new-rule') openRule();
   if (a === 'edit-rule') openRule(state.rules.find(r => r.id === b.dataset.id));
   if (a === 'toggle-rule') { const r = state.rules.find(r => r.id === b.dataset.id); r.active = !r.active; save(); render(); }
+  if (a === 'delete-rule') {
+    const rule = state.rules.find(r => r.id === b.dataset.id);
+    if (!rule) { toast('Regra não encontrada.'); return; }
+    if (!confirm(`Excluir a regra \"${rule.name || rule.keyword}\"?`)) return;
+    try {
+      await deleteRuleRemote(b.dataset.id);
+      state.rules = state.rules.filter(r => r.id !== b.dataset.id);
+      save();
+      render();
+      toast('Regra do chatbot excluída.');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Falha ao excluir regra do chatbot.');
+    }
+  }
   if (a === 'close-modal') modal.hidden = true;
   if (a === 'simulate') toast('Simulado: palavra-chave encontrada, URL chamada e resposta enviada.');
   if (a === 'new-device') openDeviceModal();
