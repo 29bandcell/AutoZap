@@ -18,6 +18,7 @@ const titles = {
   logs: 'Mensagens enviadas',
   integracoes: 'Apps e API',
   diagnosticos: 'Diagnósticos',
+  manual: 'Manual do assinante',
   planos: 'Planos e assinatura',
   admin: 'Admin AutoZap'
 };
@@ -243,6 +244,7 @@ const views = {
   enviar: () => `<div class="section-head"><div><h2>Enviar mensagem</h2><p>Envio manual pelo dispositivo conectado.</p></div></div><article class="card"><div class="compose-grid"><div class="compose-tabs"><button class="active">Texto</button><button>Mídia</button><button>Template</button></div><form id="send-form"><div class="form-grid"><div class="field"><label>Dispositivo</label><select class="select"><option>WhatsApp principal</option></select></div><div class="field"><label>Número com DDD</label><input class="input" required placeholder="5511999999999"></div><div class="field full"><label>Mensagem</label><textarea rows="9" required placeholder="Digite a mensagem"></textarea></div></div><div class="modal-actions"><button class="btn primary">Enviar mensagem</button></div></form></div></article>`,
   logs: () => logsView(),
   integracoes: () => appsView(),
+  manual: () => manualView(),
   planos: () => plansView(),
   admin: () => adminView(),
   diagnosticos: () => `<div class="section-head"><div><h2>Diagnósticos</h2><p>Saúde das conexões e últimas execuções.</p></div><button class="btn primary" data-action="diagnose">Atualizar</button></div><article class="card"><div class="health"><div class="health-item"><strong>WhatsApp</strong>${badge('connected')}<br><span>Latência: 84 ms</span></div><div class="health-item"><strong>Motor de regras</strong>${badge('connected')}<br><span>Fila: 0 eventos</span></div><div class="health-item"><strong>API IPTV</strong><span class="badge pending">Pendente</span><br><span>Falta validar a chamada real do provedor.</span></div></div></article><article class="card" style="margin-top:18px"><div class="card-head"><h2>Último teste</h2></div><pre class="code">WhatsApp .............. OK
@@ -251,6 +253,31 @@ Webhook de teste ....... MODELO
 Resposta WhatsApp ...... SIMULADA</pre></article>`
 };
 
+
+function manualBlock(icon, title, body, actions = '') {
+  return '<article class="manual-block"><div class="manual-icon">' + icon + '</div><div><h3>' + title + '</h3>' + body + actions + '</div></article>';
+}
+function manualChecklist(items) {
+  return '<ul class="manual-checklist">' + items.map(item => '<li>' + item + '</li>').join('') + '</ul>';
+}
+function manualView() {
+  const keyword = state.testLinks?.[0]?.keyword || 'TESTE IPTV';
+  return '<div class="section-head"><div><h2>Manual do assinante AutoZap</h2><p>Guia rápido para conectar WhatsApp, painel IPTV, testes automáticos, chatbot e integrações.</p></div><a class="btn primary" href="#dispositivos">Começar pelo WhatsApp</a></div>' +
+    '<div class="banner"><div><h3>Fluxo principal</h3><p>1. Conecte o WhatsApp • 2. Cadastre o painel ou URL de teste • 3. Crie a regra no chatbot • 4. Teste com uma mensagem real.</p></div><a class="btn" href="#testar">Testar agora</a></div>' +
+    '<div class="manual-grid">' +
+      manualBlock('WA', '1. Conectar o WhatsApp da empresa', '<p>Vá em <b>Dispositivos</b> e clique em <b>+ Criar dispositivo</b>. Dê um nome para a sessão, gere o QR Code e leia pelo WhatsApp da empresa em <b>Aparelhos conectados</b>.</p>' + manualChecklist(['Use um número exclusivo para atendimento e testes.', 'Depois de conectar, confira se aparece como conectado no Dashboard.', 'Se o QR expirar, gere outro ou exclua o dispositivo pendente e crie novamente.']), '<a class="btn ghost" href="#dispositivos">Abrir Dispositivos</a>') +
+      manualBlock('TV', '2. Conectar ao painel IPTV ou provedor', '<p>Vá em <b>Painel IPTV</b>. Escolha se vai usar <b>links diretos de teste</b> ou <b>API do painel</b>. Para a maioria dos provedores, basta cadastrar a URL de teste automático que o painel fornece.</p>' + manualChecklist(['Cole a URL de teste/API no campo do pacote.', 'Defina a palavra-chave que o cliente vai digitar, por exemplo: <b>' + safe(keyword) + '</b>.', 'Se o painel tiver checkout padrão, cadastre como fallback; se o painel retornar checkout individual, o AutoZap prioriza o link individual.']), '<a class="btn ghost" href="#paineliptv">Configurar IPTV</a>') +
+      manualBlock('ON', '3. Cadastrar teste automático', '<p>Em <b>Teste automático</b> ou <b>Painel IPTV</b>, cadastre cada pacote de teste: nome, palavra-chave, método POST/GET e URL do provedor.</p>' + manualChecklist(['Crie um pacote para cada tipo de teste que vende: 4h, 24h, com adultos, sem adultos etc.', 'Clique em <b>Testar URL</b> para conferir se a URL está correta.', 'Depois clique em <b>Criar regra</b> ou <b>Usar no chatbot</b>.']), '<a class="btn ghost" href="#testes">Ver Teste automático</a>') +
+      manualBlock('BOT', '4. Usar o Chatbot', '<p>O Chatbot transforma mensagens recebidas no WhatsApp em ações. Exemplo: o cliente manda <b>' + safe(keyword) + '</b>, o AutoZap chama a URL do painel IPTV e responde no WhatsApp.</p>' + manualChecklist(['Use <b>Frase exata</b> quando quiser responder só à palavra-chave correta.', 'Use <b>Contém</b> para frases como “quero teste iptv”.', 'Você pode editar, pausar ou excluir regras que não usa mais.', 'Configure o <b>pré-atendimento</b> para perguntar em qual aparelho o cliente vai testar antes de liberar o teste.']), '<a class="btn ghost" href="#chatbot">Abrir Chatbot</a>') +
+      manualBlock('TXT', '5. Templates e mensagens prontas', '<p>Templates são modelos reutilizáveis para respostas, boas-vindas, instruções de instalação, cobrança, renovação ou suporte.</p>' + manualChecklist(['Crie textos padrão para economizar tempo.', 'Use variáveis quando disponíveis, como usuário, senha, vencimento e link de renovação.', 'Mantenha as mensagens curtas e claras para WhatsApp.']), '<a class="btn ghost" href="#templates">Abrir Templates</a>') +
+      manualBlock('API', '6. Apps e API', '<p>Use <b>Apps e API</b> quando quiser integrar sistemas externos ao AutoZap. O painel gera App Key e Auth Key para chamadas seguras.</p>' + manualChecklist(['Copie as chaves e guarde em local seguro.', 'Use a API para enviar mensagens, consultar eventos ou conectar outras ferramentas.', 'Nunca envie suas chaves para clientes finais.']), '<a class="btn ghost" href="#integracoes">Abrir Apps e API</a>') +
+      manualBlock('LG', '7. Logs e diagnóstico', '<p>Em <b>Mensagens enviadas</b> e <b>Diagnósticos</b>, acompanhe tudo que entrou e saiu do WhatsApp.</p>' + manualChecklist(['Se o cliente mandou mensagem e não recebeu resposta, olhe os logs.', 'Se aparecer erro de URL/API, revise o link cadastrado no Painel IPTV.', 'Se o WhatsApp parou de responder, confira se o dispositivo ainda está conectado.']), '<a class="btn ghost" href="#logs">Ver Logs</a>') +
+      manualBlock('PL', '8. Planos, limites e assinatura', '<p>Em <b>Planos</b>, o assinante acompanha limite de dispositivos, Apps/API, mensagens mensais e status da conta.</p>' + manualChecklist(['Starter: operação pequena com 1 WhatsApp.', 'Pro: mais dispositivos e volume.', 'Agência: operação maior ou múltiplos clientes.']), '<a class="btn ghost" href="#planos">Ver Planos</a>') +
+    '</div>' +
+    '<article class="card manual-flow"><div class="card-head"><h2>Checklist antes de vender no automático</h2></div>' +
+    manualChecklist(['WhatsApp da empresa conectado e aparecendo no Dashboard.', 'Pelo menos um pacote IPTV ativo cadastrado.', 'Regra do Chatbot criada com a mesma palavra-chave do pacote.', 'Pré-atendimento revisado com o nome da empresa.', 'Teste real feito enviando mensagem de outro WhatsApp.', 'Logs conferidos após o teste.']) +
+    '</article>';
+}
 
 function logsView() {
   const summary = state.logSummary || {};
@@ -430,7 +457,7 @@ function updateAccountShell() {
   const navEl = document.querySelector('#nav');
   if (navEl && platformAdmin && navEl.dataset.mode !== 'admin') {
     navEl.dataset.mode = 'admin';
-    navEl.innerHTML = '<p>GESTÃO DA PLATAFORMA</p><a href="#dashboard" data-route="dashboard" class="active"><i>ADM</i> Visão geral</a><a href="#admin" data-route="admin"><i>CL</i> Clientes e planos</a><a href="#logs" data-route="logs"><i>LG</i> Logs globais</a><a href="#planos" data-route="planos"><i>PL</i> Planos comerciais</a><p>ATALHOS DO PRODUTO</p><a href="#dispositivos" data-route="dispositivos"><i>WA</i> Minha operação</a>';
+    navEl.innerHTML = '<p>GESTÃO DA PLATAFORMA</p><a href="#dashboard" data-route="dashboard" class="active"><i>ADM</i> Visão geral</a><a href="#admin" data-route="admin"><i>CL</i> Clientes e planos</a><a href="#logs" data-route="logs"><i>LG</i> Logs globais</a><a href="#planos" data-route="planos"><i>PL</i> Planos comerciais</a><p>ATALHOS DO PRODUTO</p><a href="#dispositivos" data-route="dispositivos"><i>WA</i> Minha operação</a><a href="#manual" data-route="manual"><i>?</i> Manual</a>';
   } else if (navEl && !platformAdmin && navEl.dataset.mode === 'admin') {
     navEl.dataset.mode = 'tenant';
     navEl.innerHTML = defaultNavHtml;
